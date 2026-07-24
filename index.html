@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0a0d0b">
   <meta name="description" content="City of Nothing — a perfectly top-down open-city zombie survival game.">
   <title>City of Nothing</title>
-  <link rel="stylesheet" href="styles.css?v=20260724.2">
+  <link rel="stylesheet" href="styles.css?v=20260724.3">
 </head>
 <body>
   <main id="game_shell">
@@ -40,24 +40,24 @@
     <div id="toast_stack" aria-live="polite"></div>
 
     <section id="quick_bar" class="hud_panel">
-      <button data_quick="weapon" type="button"><kbd>1</kbd><span id="quick_weapon">baseball bat</span></button>
-      <button data_quick="food" type="button"><kbd>2</kbd><span id="quick_food">apple</span></button>
-      <button data_quick="inventory" type="button"><kbd>i</kbd><span>inventory</span></button>
-      <button data_quick="crafting" type="button"><kbd>c</kbd><span>crafting</span></button>
+      <button data-quick="weapon" type="button"><kbd>1</kbd><span id="quick_weapon">baseball bat</span></button>
+      <button data-quick="food" type="button"><kbd>2</kbd><span id="quick_food">apple</span></button>
+      <button data-quick="inventory" type="button"><kbd>i</kbd><span>inventory</span></button>
+      <button data-quick="crafting" type="button"><kbd>c</kbd><span>crafting</span></button>
     </section>
 
     <section id="inventory_overlay" class="overlay" hidden>
       <header>
         <div><span class="eyebrow">survivor pack</span><h2>inventory</h2></div>
-        <div class="header_actions"><span id="carry_weight">0.0 / 35.0 kg</span><button data_close type="button" aria-label="Close">×</button></div>
+        <div class="header_actions"><span id="carry_weight">0.0 / 35.0 kg</span><button data-close type="button" aria-label="Close">×</button></div>
       </header>
       <div class="inventory_layout">
         <nav id="inventory_filters">
-          <button class="active" data_filter="all" type="button">all</button>
-          <button data_filter="weapon" type="button">weapons</button>
-          <button data_filter="food" type="button">food</button>
-          <button data_filter="wearable" type="button">clothing</button>
-          <button data_filter="material" type="button">materials</button>
+          <button class="active" data-filter="all" type="button">all</button>
+          <button data-filter="weapon" type="button">weapons</button>
+          <button data-filter="food" type="button">food</button>
+          <button data-filter="wearable" type="button">clothing</button>
+          <button data-filter="material" type="button">materials</button>
         </nav>
         <div id="inventory_grid" class="item_grid"></div>
         <aside id="item_inspector"><span class="empty">select an item</span></aside>
@@ -67,7 +67,7 @@
     <section id="crafting_overlay" class="overlay" hidden>
       <header>
         <div><span class="eyebrow">no recipes · any two items</span><h2>workbench</h2></div>
-        <button data_close type="button" aria-label="Close">×</button>
+        <button data-close type="button" aria-label="Close">×</button>
       </header>
       <div class="craft_layout">
         <div class="craft_picker">
@@ -89,7 +89,7 @@
     <section id="container_overlay" class="overlay compact" hidden>
       <header>
         <div><span class="eyebrow">search results</span><h2 id="container_name">container</h2></div>
-        <button data_close type="button" aria-label="Close">×</button>
+        <button data-close type="button" aria-label="Close">×</button>
       </header>
       <div id="container_items"></div>
       <button id="take_all" class="primary wide" type="button">take all</button>
@@ -137,6 +137,6 @@
       <button id="touch_attack" type="button">attack</button>
     </div>
   </main>
-  <script src="game.js?v=20260724.2"></script>
+  <script src="game.js?v=20260724.3"></script>
 </body>
 </html>
