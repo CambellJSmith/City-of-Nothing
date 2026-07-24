@@ -229,7 +229,10 @@ function assert_ground_floor_orientation(layout, building) {
 
 assert.ok(game, "game initializes");
 assert.equal(ids.length, new Set(ids).size, "HTML ids are unique");
-assert.match(html, /<script src="game\.js"><\/script>/, "game script supports direct local launch");
+const script_version = html.match(/<script src="game\.js\?v=([^"]+)"><\/script>/)?.[1];
+const style_version = html.match(/<link rel="stylesheet" href="styles\.css\?v=([^"]+)">/)?.[1];
+assert.ok(script_version, "game script uses a versioned URL and supports direct local launch");
+assert.equal(style_version, script_version, "game and stylesheet share the asset version");
 assert.doesNotMatch(html, /<script type="module"/, "local launch does not depend on module loading");
 assert.match(styles, /@media \(max-width: 620px\), \(pointer: coarse\)/, "touch layout is included");
 assert.match(source, /floor_label\(this\.inside\.floor\)\.toUpperCase\(\)\}`, 10, 14\)/, "building and floor label stays inside the upper-left outer wall");

@@ -199,6 +199,8 @@ For GitHub Pages:
 2. Select **Deploy from a branch**.
 3. Choose `main` and `/ (root)`.
 
+The stylesheet and game script URLs in `index.html` share a version query. Increment both versions together whenever either asset changes so browsers and static hosts cannot keep serving stale gameplay code after a deployment.
+
 For another static host, upload `index.html`, `styles.css`, and `game.js` together while preserving their names and relative paths.
 
 ## contribution flow
