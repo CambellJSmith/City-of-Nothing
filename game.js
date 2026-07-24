@@ -77,16 +77,69 @@ const engagement_rules = {
 };
 
 const furniture_catalog = {
-  cupboard: { name: "cupboard", w: 64, h: 32, storage: true, cost: { "scrap metal": 1, nails: 1 } },
-  chest: { name: "chest", w: 58, h: 38, storage: true, cost: { "scrap metal": 1, "duct tape": 1 } },
-  shelf: { name: "shelf", w: 82, h: 28, storage: true, cost: { "scrap metal": 1, nails: 1 } },
-  bed: { name: "bed", w: 54, h: 92, action: "rest", cost: { cloth: 2, "duct tape": 1 } },
-  cooker: { name: "cooker", w: 54, h: 44, action: "cook", powered: true, cost: { "scrap metal": 2, gasoline: 1 } },
-  crafting_bench: { name: "crafting bench", w: 92, h: 46, action: "workbench", cost: { "scrap metal": 1, nails: 1, "duct tape": 1 } },
-  turret: { name: "turret", w: 52, h: 52, action: "turret", powered: true, cost: { "scrap metal": 3, "9mm pistol": 1, "9mm rounds": 1 } },
-  generator: { name: "generator", w: 68, h: 52, action: "generator", cost: { "scrap metal": 2, gasoline: 1, "electronic parts": 1 } },
-  campfire: { name: "campfire", w: 50, h: 50, action: "campfire", cost: { cloth: 1, "scrap metal": 1 } },
-  radio_center: { name: "radio center", w: 92, h: 52, action: "radio", cost: { "scrap metal": 2, "electronic parts": 2, "9mm rounds": 1 } },
+  cupboard: { name: "cupboard", category: "storage", description: "general indoor storage", w: 64, h: 32, storage: true, color: "#725f48", cost: { "scrap metal": 1, nails: 1 } },
+  chest: { name: "chest", category: "storage", description: "compact secure storage", w: 58, h: 38, storage: true, color: "#65513b", cost: { "scrap metal": 1, "duct tape": 1 } },
+  shelf: { name: "shelf", category: "storage", description: "wide open storage", w: 82, h: 28, storage: true, color: "#7b684c", cost: { "scrap metal": 1, nails: 1 } },
+  wardrobe: { name: "wardrobe", category: "storage", description: "tall clothing storage", w: 70, h: 34, storage: true, color: "#6f5a48", cost: { cloth: 1, nails: 2 } },
+  dresser: { name: "dresser", category: "storage", description: "low multi-drawer storage", w: 72, h: 34, storage: true, color: "#755d48", cost: { nails: 2, "duct tape": 1 } },
+  pantry: { name: "pantry", category: "storage", description: "large food and supply storage", w: 84, h: 38, storage: true, color: "#7b694c", cost: { nails: 2, "scrap metal": 1 } },
+  fridge: { name: "fridge", category: "storage", description: "powered food storage with an interior light", w: 48, h: 44, storage: true, powered: true, light: { range: 105, strength: .28, color: "rgba(205,228,218,.11)" }, color: "#77817e", cost: { "scrap metal": 2, "electronic parts": 1 } },
+  freezer: { name: "freezer", category: "storage", description: "wide powered cold storage", w: 80, h: 42, storage: true, powered: true, color: "#778783", cost: { "scrap metal": 3, "electronic parts": 1 } },
+  weapon_rack: { name: "weapon rack", category: "storage", description: "long storage for group weapons", w: 92, h: 28, storage: true, color: "#655848", cost: { "scrap metal": 1, nails: 2 } },
+  gun_locker: { name: "gun locker", category: "storage", description: "reinforced firearm storage", w: 58, h: 38, storage: true, color: "#596662", cost: { "scrap metal": 3, "duct tape": 1 } },
+  medicine_cabinet: { name: "medicine cabinet", category: "storage", description: "compact medical storage", w: 54, h: 28, storage: true, color: "#738984", cost: { "scrap metal": 1, "electronic parts": 1 } },
+  tool_cabinet: { name: "tool cabinet", category: "storage", description: "heavy workshop storage", w: 70, h: 36, storage: true, color: "#646c61", cost: { "scrap metal": 2, nails: 1 } },
+  bookcase: { name: "bookcase", category: "storage", description: "tall general storage", w: 82, h: 30, storage: true, color: "#6c5943", cost: { nails: 2, cloth: 1 } },
+  footlocker: { name: "footlocker", category: "storage", description: "small personal storage", w: 62, h: 34, storage: true, outdoor: true, color: "#5d624c", cost: { "scrap metal": 1, "duct tape": 2 } },
+  crate_stack: { name: "crate stack", category: "storage", description: "bulky high-capacity storage", w: 76, h: 60, storage: true, outdoor: true, color: "#6e5b43", cost: { nails: 3, "duct tape": 1 } },
+
+  bed: { name: "bed", category: "comfort", description: "two-hour restorative sleep", w: 54, h: 92, action: "rest", rest: { minutes: 120, heal: 24, stamina: 100, hunger: 8 }, color: "#73817b", cost: { cloth: 2, "duct tape": 1 } },
+  bunk_bed: { name: "bunk bed", category: "comfort", description: "deep rest for a longer sleep", w: 58, h: 96, action: "rest", rest: { minutes: 180, heal: 34, stamina: 100, hunger: 11 }, color: "#657873", cost: { cloth: 3, "scrap metal": 2 } },
+  sleeping_bag: { name: "sleeping bag", category: "comfort", description: "portable light rest indoors or outside", w: 42, h: 82, action: "rest", rest: { minutes: 60, heal: 10, stamina: 82, hunger: 5 }, outdoor: true, color: "#65725b", cost: { cloth: 2, "duct tape": 1 } },
+  sofa: { name: "sofa", category: "comfort", description: "restores stamina during a short break", w: 96, h: 46, action: "sit", rest: { minutes: 25, heal: 4, stamina: 80, hunger: 2 }, color: "#6f725b", cost: { cloth: 3, nails: 2 } },
+  armchair: { name: "armchair", category: "comfort", description: "comfortable short rest", w: 52, h: 52, action: "sit", rest: { minutes: 20, heal: 3, stamina: 72, hunger: 1 }, color: "#756a55", cost: { cloth: 2, nails: 1 } },
+  dining_table: { name: "dining table", category: "comfort", description: "a broad group gathering surface", w: 100, h: 58, action: "rally", color: "#715b43", cost: { nails: 3, "duct tape": 1 } },
+  chair: { name: "chair", category: "comfort", description: "quick stamina recovery", w: 36, h: 36, action: "sit", rest: { minutes: 10, heal: 1, stamina: 55, hunger: 1 }, color: "#6b5944", cost: { nails: 1, cloth: 1 } },
+  bench: { name: "bench", category: "comfort", description: "outdoor or indoor group seating", w: 92, h: 34, action: "sit", rest: { minutes: 15, heal: 2, stamina: 62, hunger: 1 }, outdoor: true, color: "#67563f", cost: { nails: 2, "scrap metal": 1 } },
+  shower: { name: "shower", category: "comfort", description: "powered wash that restores health and stamina", w: 56, h: 56, action: "shower", powered: true, color: "#728581", cost: { "scrap metal": 2, "electronic parts": 1, "duct tape": 1 } },
+  heater: { name: "space heater", category: "comfort", description: "powered warmth and quick recovery", w: 48, h: 36, action: "heater", powered: true, color: "#796450", cost: { "scrap metal": 2, "electronic parts": 1 } },
+  jukebox: { name: "jukebox", category: "comfort", description: "powered music that rallies nearby teammates", w: 54, h: 72, action: "jukebox", powered: true, toggle: true, light: { range: 190, strength: .34, color: "rgba(191,122,255,.12)" }, color: "#665674", cost: { "scrap metal": 2, "electronic parts": 2 } },
+
+  cooker: { name: "cooker", category: "workshop", description: "powered spoiled-meat cooker", w: 54, h: 44, action: "cook", powered: true, color: "#70756f", cost: { "scrap metal": 2, gasoline: 1 } },
+  crafting_bench: { name: "crafting bench", category: "workshop", description: "opens all fixed practical recipes", w: 92, h: 46, action: "workbench", color: "#765e43", cost: { "scrap metal": 1, nails: 1, "duct tape": 1 } },
+  salvage_bench: { name: "salvage bench", category: "workshop", description: "access to repair and component recipes", w: 98, h: 48, action: "workbench", color: "#685b48", cost: { "scrap metal": 2, nails: 2, "duct tape": 1 } },
+  ammunition_press: { name: "ammunition press", category: "workshop", description: "access to fixed ammunition recipes", w: 74, h: 48, action: "workbench", color: "#666555", cost: { "scrap metal": 3, "electronic parts": 1, nails: 1 } },
+  medical_station: { name: "medical station", category: "workshop", description: "boosts bandages and medical kits", w: 84, h: 46, action: "medical", color: "#638079", cost: { cloth: 2, "scrap metal": 1, "electronic parts": 1 } },
+  map_table: { name: "map table", category: "workshop", description: "reports the local district, roads and threats", w: 96, h: 62, action: "map", color: "#6d644e", cost: { cloth: 1, nails: 2, "duct tape": 1 } },
+  rally_board: { name: "rally board", category: "workshop", description: "sets a defensive group rally point", w: 78, h: 28, action: "rally", color: "#6b6048", cost: { nails: 2, cloth: 1 } },
+  water_collector: { name: "rain collector", category: "workshop", description: "collects two bottles of water every six hours", w: 78, h: 60, action: "produce", production: { item: "bottled water", count: 2, interval: 360 }, outdoor: true, color: "#526d6b", cost: { cloth: 2, "scrap metal": 1, "duct tape": 1 } },
+  planter_box: { name: "planter box", category: "workshop", description: "grows food every eight hours", w: 92, h: 48, action: "produce", production: { item: "apple", count: 1, interval: 480 }, outdoor: true, color: "#586847", cost: { cloth: 1, nails: 2 } },
+  hydroponic_rack: { name: "hydroponic rack", category: "workshop", description: "powered food production every six hours", w: 90, h: 48, action: "produce", production: { item: "apple", count: 3, interval: 360 }, powered: true, light: { range: 170, strength: .32, color: "rgba(180,225,145,.12)" }, color: "#57725e", cost: { "scrap metal": 3, "electronic parts": 2, cloth: 1 } },
+  water_purifier: { name: "water purifier", category: "workshop", description: "powered clean water every three hours", w: 66, h: 50, action: "produce", production: { item: "bottled water", count: 2, interval: 180 }, powered: true, color: "#587378", cost: { "scrap metal": 2, "electronic parts": 2, cloth: 1 } },
+
+  turret: { name: "turret", category: "defence", description: "balanced automatic defence", w: 52, h: 52, action: "defence", toggle: true, powered: true, defence: { kind: "turret", range: 520, damage: 24, cooldown: .62, noise: 640 }, color: "#596866", cost: { "scrap metal": 3, "9mm pistol": 1, "9mm rounds": 1 } },
+  heavy_turret: { name: "heavy turret", category: "defence", description: "slow high-damage long-range defence", w: 64, h: 64, action: "defence", toggle: true, powered: true, defence: { kind: "turret", range: 720, damage: 42, cooldown: 1.15, noise: 820 }, color: "#4f6260", cost: { "scrap metal": 5, "9mm pistol": 1, "shotgun shells": 1, "electronic parts": 2 } },
+  shotgun_turret: { name: "shotgun turret", category: "defence", description: "fast brutal close-range defence", w: 58, h: 58, action: "defence", toggle: true, powered: true, defence: { kind: "turret", range: 350, damage: 58, cooldown: 1.4, noise: 900 }, color: "#665d52", cost: { "scrap metal": 4, "pump shotgun": 1, "shotgun shells": 1, "electronic parts": 1 } },
+  barricade: { name: "barricade", category: "defence", description: "large solid route blocker", w: 110, h: 28, action: "barrier", outdoor: true, color: "#66533f", cost: { nails: 3, "scrap metal": 2 } },
+  spike_trap: { name: "spike trap", category: "defence", description: "silent contact damage without power", w: 68, h: 68, action: "defence", defence: { kind: "contact", damage: 36, cooldown: 1.1, padding: 24 }, outdoor: true, color: "#665b4c", cost: { nails: 4, "scrap metal": 1 } },
+  electric_fence: { name: "electric fence", category: "defence", description: "powered contact damage and crowd control", w: 112, h: 24, action: "defence", toggle: true, powered: true, defence: { kind: "contact", damage: 22, cooldown: .45, padding: 18 }, color: "#536966", cost: { "scrap metal": 3, "electronic parts": 2 } },
+  alarm_siren: { name: "alarm siren", category: "defence", description: "powered lure that draws infected from far away", w: 44, h: 44, action: "alarm", toggle: true, powered: true, alert_range: 1500, color: "#71504c", cost: { "scrap metal": 1, "electronic parts": 2 } },
+  motion_sensor: { name: "motion sensor", category: "defence", description: "powered local infected counter", w: 48, h: 30, action: "sensor", powered: true, light: { range: 90, cone: .55, strength: .24, color: "rgba(145,255,176,.12)" }, color: "#4d6860", cost: { "scrap metal": 1, "electronic parts": 2 } },
+
+  generator: { name: "generator", category: "power", description: "building-wide powered furniture source", w: 68, h: 52, action: "power", toggle: true, power_source: true, color: "#6c684d", cost: { "scrap metal": 2, gasoline: 1, "electronic parts": 1 } },
+  battery_bank: { name: "battery bank", category: "power", description: "quiet building-wide backup power", w: 72, h: 44, action: "power", toggle: true, power_source: true, color: "#586763", cost: { "scrap metal": 3, "electronic parts": 3 } },
+  radio_center: { name: "radio center", category: "power", description: "designates the active base and commands the team", w: 92, h: 52, action: "radio", color: "#586d67", cost: { "scrap metal": 2, "electronic parts": 2, "9mm rounds": 1 } },
+
+  campfire: { name: "campfire", category: "lighting", description: "outdoor cooking and small warm light", w: 50, h: 50, action: "cook", outdoor: true, light: { range: 230, strength: .68, color: "rgba(255,154,72,.16)", flicker: true }, color: "#8b5634", cost: { cloth: 1, "scrap metal": 1 } },
+  candle: { name: "candle", category: "lighting", description: "tiny soft light with a short throw", w: 22, h: 22, action: "light", toggle: true, outdoor: true, light: { range: 125, strength: .55, color: "rgba(255,194,115,.13)", flicker: true }, color: "#8e7758", cost: { cloth: 1 } },
+  oil_lamp: { name: "oil lamp", category: "lighting", description: "portable medium circular light", w: 28, h: 28, action: "light", toggle: true, outdoor: true, light: { range: 245, strength: .67, color: "rgba(255,174,86,.15)", flicker: true }, color: "#796043", cost: { gasoline: 1, "scrap metal": 1 } },
+  table_lamp: { name: "table lamp", category: "lighting", description: "small powered room light", w: 34, h: 34, action: "light", toggle: true, powered: true, light: { range: 220, strength: .72, color: "rgba(255,214,159,.13)" }, color: "#6c6656", cost: { cloth: 1, "electronic parts": 1 } },
+  floor_lamp: { name: "floor lamp", category: "lighting", description: "medium powered circular light", w: 34, h: 34, action: "light", toggle: true, powered: true, light: { range: 340, strength: .78, color: "rgba(255,224,174,.12)" }, color: "#64675d", cost: { "scrap metal": 1, "electronic parts": 1, cloth: 1 } },
+  ceiling_light: { name: "ceiling light", category: "lighting", description: "large even powered room light", w: 42, h: 42, action: "light", toggle: true, powered: true, light: { range: 480, strength: .84, color: "rgba(224,240,220,.11)" }, color: "#718078", cost: { "scrap metal": 1, "electronic parts": 2 } },
+  string_lights: { name: "string lights", category: "lighting", description: "wide gentle powered ambient light", w: 110, h: 18, action: "light", toggle: true, powered: true, light: { range: 390, strength: .58, color: "rgba(255,208,142,.13)" }, color: "#746b54", cost: { cloth: 1, "electronic parts": 2, "duct tape": 1 } },
+  floodlight: { name: "floodlight", category: "lighting", description: "wide powered cone with a long throw", w: 48, h: 42, action: "light", toggle: true, powered: true, light: { range: 720, cone: 1.25, strength: .88, color: "rgba(225,238,219,.12)" }, color: "#65716c", cost: { "scrap metal": 2, "electronic parts": 2 } },
+  spotlight: { name: "spotlight", category: "lighting", description: "narrow powered beam with the longest throw", w: 46, h: 40, action: "light", toggle: true, powered: true, light: { range: 980, cone: .48, strength: .94, color: "rgba(235,241,220,.11)" }, color: "#586864", cost: { "scrap metal": 2, "electronic parts": 3 } },
+  emergency_light: { name: "emergency light", category: "lighting", description: "short battery-backed directional throw", w: 42, h: 26, action: "light", toggle: true, light: { range: 285, cone: 1.85, strength: .7, color: "rgba(255,112,92,.13)" }, color: "#76524d", cost: { "scrap metal": 1, "electronic parts": 1 } },
 };
 
 const workbench_recipes = {
@@ -1368,7 +1421,10 @@ class Game {
       this.inventory.render_inventory();
     }));
     document.querySelectorAll("[data-quick]").forEach((button) => button.addEventListener("click", () => this.quick(button.dataset.quick)));
-    dom.build_catalog.querySelectorAll("[data-build]").forEach((button) => button.addEventListener("click", () => this.select_build_type(button.dataset.build)));
+    dom.build_catalog.addEventListener("click", (event) => {
+      const button = event.target?.closest?.("[data-build]");
+      if (button && !button.disabled) this.select_build_type(button.dataset.build);
+    });
     dom.workbench_recipes.querySelectorAll("[data-recipe]").forEach((button) => button.addEventListener("click", () => this.craft_recipe(button.dataset.recipe)));
     dom.radio_members.addEventListener("click", (event) => {
       const id = event.target?.dataset?.radioMember;
@@ -1644,18 +1700,34 @@ class Game {
   }
 
   render_build_catalog() {
+    const categories = ["storage", "comfort", "workshop", "defence", "power", "lighting"];
+    const labels = { storage: "storage", comfort: "comfort & recovery", workshop: "workshop & supplies", defence: "defences", power: "power & command", lighting: "lights" };
+    dom.build_catalog.innerHTML = categories.map((category) => {
+      const buttons = Object.entries(furniture_catalog)
+        .filter(([, definition]) => definition.category === category)
+        .map(([type, definition]) => {
+          const cost = Object.entries(definition.cost).map(([name, count]) => `${count > 1 ? `${count} ` : ""}${name}`).join(" + ");
+          return `<button data-build="${safe(type)}" type="button"><strong>${safe(definition.name)}</strong><span>${safe(definition.description)} · ${safe(cost)}</span></button>`;
+        }).join("");
+      return `<section class="build_group"><h3>${safe(labels[category])}</h3><div>${buttons}</div></section>`;
+    }).join("");
     dom.build_catalog.querySelectorAll("[data-build]").forEach((button) => {
       const definition = furniture_catalog[button.dataset.build];
       if (!definition) return;
-      button.disabled = !this.can_afford(definition.cost) || (!this.inside && button.dataset.build !== "campfire") || this.sewer;
+      button.disabled = !this.can_afford(definition.cost) || !this.can_build_here(definition);
     });
+  }
+
+  can_build_here(definition) {
+    if (!definition || this.sewer) return false;
+    return Boolean(this.inside || definition.outdoor);
   }
 
   select_build_type(type) {
     const definition = furniture_catalog[type];
     if (!definition) return;
-    if (this.sewer || (!this.inside && type !== "campfire")) {
-      this.toast(type === "campfire" ? "campfires cannot be built in the sewer" : "that furniture must be built inside a building", true);
+    if (!this.can_build_here(definition)) {
+      this.toast(this.sewer ? "furniture cannot be built in the sewer" : "that furniture must be built inside a building", true);
       return;
     }
     if (!this.can_afford(definition.cost)) {
@@ -1683,6 +1755,22 @@ class Game {
   built_at(key = this.current_location_key()) {
     if (!this.built_furniture.has(key)) this.built_furniture.set(key, []);
     return this.built_furniture.get(key);
+  }
+
+  built_nearby(x = this.player.x, y = this.player.y) {
+    if (this.inside || this.sewer) return this.built_furniture.get(this.current_location_key()) ?? [];
+    const block_x = Math.floor(x / CELL);
+    const block_y = Math.floor(y / CELL);
+    const furniture = [];
+    for (let by = block_y - 1; by <= block_y + 1; by += 1) {
+      for (let bx = block_x - 1; bx <= block_x + 1; bx += 1) furniture.push(...(this.built_furniture.get(`street:${bx},${by}`) ?? []));
+    }
+    return furniture;
+  }
+
+  construction_location_key(preview) {
+    if (this.inside || this.sewer) return this.current_location_key();
+    return `street:${Math.floor((preview.x + preview.w * .5) / CELL)},${Math.floor((preview.y + preview.h * .5) / CELL)}`;
   }
 
   item_count(name) {
@@ -1716,7 +1804,8 @@ class Game {
   }
 
   can_place_built_furniture(preview) {
-    if (!preview || this.sewer) return false;
+    const definition = furniture_catalog[this.build_type];
+    if (!preview || !this.can_build_here(definition)) return false;
     if (circle_rect(this.player.x, this.player.y, PLAYER_RADIUS + 12, preview)) return false;
     if (this.inside) {
       const layout = this.layout();
@@ -1726,10 +1815,13 @@ class Game {
       if (layout.passages.some((passage) => rects_overlap(preview, passage, 14))) return false;
       if (layout.clearances.some((clearance) => circle_rect(clearance.x, clearance.y, clearance.radius + 18, preview))) return false;
     } else {
-      if (this.build_type !== "campfire") return false;
-      if (this.world.nearby(preview.x + preview.w * .5, preview.y + preview.h * .5, 1).some((block) => block.buildings.some((building) => rects_overlap(preview, building, 20)))) return false;
+      if (!definition.outdoor) return false;
+      const blocks = this.world.nearby(preview.x + preview.w * .5, preview.y + preview.h * .5, 1);
+      if (blocks.some((block) => block.buildings.some((building) => rects_overlap(preview, building, 20)))) return false;
+      if (blocks.some((block) => block.trees.some((tree) => circle_rect(tree.x, tree.y, tree.radius + 12, preview)))) return false;
+      if (blocks.some((block) => block.grates.some((grate) => circle_rect(grate.x, grate.y, 28, preview)))) return false;
     }
-    if (this.built_at().some((item) => rects_overlap(preview, item, 14))) return false;
+    if (this.built_nearby(preview.x + preview.w * .5, preview.y + preview.h * .5).some((item) => rects_overlap(preview, item, 14))) return false;
     return !this.companions.some((survivor) => !survivor.dead && !survivor.remote && circle_rect(survivor.x, survivor.y, survivor.radius + 8, preview));
   }
 
@@ -1745,7 +1837,7 @@ class Game {
       this.build_type = null;
       return false;
     }
-    const key = this.current_location_key();
+    const key = this.construction_location_key(preview);
     const item = {
       ...preview,
       id: uid("furniture"),
@@ -1755,6 +1847,7 @@ class Game {
       storage: Boolean(definition.storage),
       active: true,
       cooldown: 0,
+      ready_at: definition.production ? this.world_minutes + definition.production.interval : null,
       location_key: key,
     };
     this.built_at(key).push(item);
@@ -2009,34 +2102,64 @@ class Game {
   building_powered(building_id) {
     for (const [key, items] of this.built_furniture) {
       if (!key.startsWith(`${building_id}:`)) continue;
-      if (items.some((item) => item.type === "generator" && item.active !== false)) return true;
+      if (items.some((item) => furniture_catalog[item.type]?.power_source && item.active !== false)) return true;
     }
     return false;
   }
 
-  update_built_furniture(delta) {
-    const items = this.built_furniture.get(this.current_location_key()) ?? [];
-    const powered = this.inside ? this.building_powered(this.inside.building.id) : false;
-    const enemies = this.active_enemies().filter((enemy) => !enemy.dead);
-    for (const item of items) {
-      item.cooldown = Math.max(0, (item.cooldown ?? 0) - delta);
-      if (item.type !== "turret" || !powered || item.active === false || item.cooldown > 0) continue;
-      let target = null;
-      let nearest = 520 ** 2;
-      const center_x = item.x + item.w * .5;
-      const center_y = item.y + item.h * .5;
+  furniture_has_power(definition, building_id = this.inside?.building.id) {
+    return !definition?.powered || Boolean(building_id && this.building_powered(building_id));
+  }
+
+  update_defence(item, definition, enemies, powered, visible) {
+    const defence = definition.defence;
+    if (!defence || item.active === false || item.cooldown > 0 || (definition.powered && !powered)) return;
+    const center_x = item.x + item.w * .5;
+    const center_y = item.y + item.h * .5;
+    let target = null;
+    if (defence.kind === "contact") {
+      target = enemies.find((enemy) => !enemy.dead && circle_rect(enemy.x, enemy.y, enemy.radius + (defence.padding ?? 0), item)) ?? null;
+    } else {
+      let nearest = defence.range ** 2;
       for (const enemy of enemies) {
+        if (enemy.dead) continue;
         const distance = distance_sq(center_x, center_y, enemy.x, enemy.y);
         if (distance < nearest) {
           nearest = distance;
           target = enemy;
         }
       }
-      if (!target) continue;
-      item.cooldown = .62;
-      this.shots.push({ x1: center_x, y1: center_y, x2: target.x, y2: target.y, life: .08 });
-      this.hurt_enemy(target, 24);
-      this.alert_at(center_x, center_y, 640);
+    }
+    if (!target) return;
+    item.cooldown = defence.cooldown;
+    if (visible && defence.kind === "turret") this.shots.push({ x1: center_x, y1: center_y, x2: target.x, y2: target.y, life: .08 });
+    if (visible) {
+      this.hurt_enemy(target, defence.damage);
+      if (defence.noise) this.alert_at(center_x, center_y, defence.noise);
+      return;
+    }
+    target.health -= defence.damage;
+    target.alerted = true;
+    if (target.health <= 0) {
+      target.dead = true;
+      this.killed.add(target.id);
+      this.stats.kills += 1;
+    }
+  }
+
+  update_built_furniture(delta) {
+    const items = this.built_nearby();
+    const powered = this.inside ? this.building_powered(this.inside.building.id) : false;
+    const enemies = this.active_enemies().filter((enemy) => !enemy.dead);
+    for (const item of items) {
+      item.cooldown = Math.max(0, (item.cooldown ?? 0) - delta);
+      const definition = furniture_catalog[item.type];
+      if (!definition) continue;
+      this.update_defence(item, definition, enemies, powered, true);
+      if (definition.action === "alarm" && item.active !== false && powered && item.cooldown <= 0) {
+        item.cooldown = 3.5;
+        this.alert_at(item.x + item.w * .5, item.y + item.h * .5, definition.alert_range);
+      }
     }
   }
 
@@ -2072,22 +2195,11 @@ class Game {
           enemy.wander_angle += Math.PI * .63;
         }
       }
-      if (!powered) continue;
-      const turrets = (this.built_furniture.get(`${building.id}:${floor}`) ?? []).filter((item) => item.type === "turret" && item.active !== false);
-      for (const turret of turrets) {
-        turret.cooldown = Math.max(0, (turret.cooldown ?? 0) - step);
-        if (turret.cooldown > 0) continue;
-        const center_x = turret.x + turret.w * .5;
-        const center_y = turret.y + turret.h * .5;
-        const target = enemies.filter((enemy) => !enemy.dead && distance_sq(center_x, center_y, enemy.x, enemy.y) <= 520 ** 2).sort((first, second) => distance_sq(center_x, center_y, first.x, first.y) - distance_sq(center_x, center_y, second.x, second.y))[0];
-        if (!target) continue;
-        turret.cooldown = .62;
-        target.health -= 24;
-        if (target.health <= 0) {
-          target.dead = true;
-          this.killed.add(target.id);
-          this.stats.kills += 1;
-        }
+      const furniture = this.built_furniture.get(`${building.id}:${floor}`) ?? [];
+      for (const item of furniture) {
+        item.cooldown = Math.max(0, (item.cooldown ?? 0) - step);
+        const definition = furniture_catalog[item.type];
+        if (definition) this.update_defence(item, definition, enemies, powered, false);
       }
     }
   }
@@ -2126,6 +2238,7 @@ class Game {
       const limit = CITY_RADIUS * CELL;
       if (Math.abs(x) > limit || Math.abs(y) > limit) return;
       if (this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, PLAYER_RADIUS + 2, building)))) return;
+      if (this.built_nearby(x, y).some((item) => circle_rect(x, y, PLAYER_RADIUS, item))) return;
     }
     this.player.x = x;
     this.player.y = y;
@@ -2418,7 +2531,7 @@ class Game {
       blocked = x < 36 + survivor.radius || y < 36 + survivor.radius || x > layout.width - 36 - survivor.radius || y > layout.height - 36 - survivor.radius || layout.walls.some((wall) => circle_rect(x, y, survivor.radius, wall)) || this.built_at().some((item) => circle_rect(x, y, survivor.radius, item));
     } else {
       const limit = CITY_RADIUS * CELL;
-      blocked = Math.abs(x) > limit || Math.abs(y) > limit || this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, survivor.radius + 2, building)));
+      blocked = Math.abs(x) > limit || Math.abs(y) > limit || this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, survivor.radius + 2, building))) || this.built_nearby(x, y).some((item) => circle_rect(x, y, survivor.radius, item));
     }
     if (!blocked) {
       survivor.x = x;
@@ -2630,7 +2743,7 @@ class Game {
     } else {
       const bx = Math.floor(x / CELL);
       const by = Math.floor(y / CELL);
-      blocked = [this.world.block(bx, by), this.world.block(bx - 1, by), this.world.block(bx, by - 1)].some((block) => block.buildings.some((building) => circle_rect(x, y, enemy.radius, building)));
+      blocked = [this.world.block(bx, by), this.world.block(bx - 1, by), this.world.block(bx, by - 1)].some((block) => block.buildings.some((building) => circle_rect(x, y, enemy.radius, building))) || this.built_nearby(x, y).some((item) => circle_rect(x, y, enemy.radius, item));
     }
     if (!blocked) { enemy.x = x; enemy.y = y; }
     else enemy.wander_angle += Math.PI * .63;
@@ -2790,10 +2903,10 @@ class Game {
       }
     }
     if (!this.sewer) {
-      for (const furniture of this.built_at()) {
+      for (const furniture of this.built_nearby()) {
         const definition = furniture_catalog[furniture.type];
         if (!definition) continue;
-        const label = furniture.storage ? `open ${definition.name}` : furniture.type === "generator" || furniture.type === "turret" ? `${furniture.active === false ? "activate" : "switch off"} ${definition.name}` : `use ${definition.name}`;
+        const label = furniture.storage ? `open ${definition.name}` : definition.toggle ? `${furniture.active === false ? "activate" : "switch off"} ${definition.name}` : `use ${definition.name}`;
         choices.push({ type: "furniture", x: furniture.x + furniture.w * .5, y: furniture.y + furniture.h * .5, label, furniture });
       }
     }
@@ -2904,21 +3017,25 @@ class Game {
 
   use_furniture(item) {
     if (!item) return;
+    const definition = furniture_catalog[item.type];
+    if (!definition) return;
     if (item.storage) {
       this.open_container(item);
       return;
     }
-    if (item.type === "bed") {
-      this.world_minutes += 120;
-      this.player.health = clamp(this.player.health + 24, 0, 100);
-      this.player.stamina = 100;
-      this.player.hunger = clamp(this.player.hunger - 8, 0, 100);
-      this.toast("rested for two hours");
-    } else if (item.type === "cooker" || item.type === "campfire") {
-      if (item.type === "cooker" && (!this.inside || !this.building_powered(this.inside.building.id))) {
-        this.toast("the cooker needs an active generator", true);
-        return;
-      }
+    const powered = this.furniture_has_power(definition);
+    if (definition.powered && !powered && !definition.power_source) {
+      this.toast(`${definition.name} needs an active power source`, true);
+      return;
+    }
+    if (definition.action === "rest" || definition.action === "sit") {
+      const rest = definition.rest;
+      this.world_minutes += rest.minutes;
+      this.player.health = clamp(this.player.health + rest.heal, 0, 100);
+      this.player.stamina = Math.max(this.player.stamina, rest.stamina);
+      this.player.hunger = clamp(this.player.hunger - rest.hunger, 0, 100);
+      this.toast(definition.action === "rest" ? `rested for ${rest.minutes} minutes` : `took a ${rest.minutes}-minute break`);
+    } else if (definition.action === "cook") {
       const meat = this.inventory.items.find((candidate) => candidate.name === "spoiled meat");
       if (!meat) {
         this.toast("you have nothing suitable to cook", true);
@@ -2927,15 +3044,79 @@ class Game {
       this.inventory.remove(meat.id);
       this.inventory.add(make_item("cooked meat"), false);
       this.toast(`cooked ${meat.name}`);
-    } else if (item.type === "crafting_bench") {
+    } else if (definition.action === "workbench") {
       this.open_workbench();
       return;
-    } else if (item.type === "generator" || item.type === "turret") {
+    } else if (definition.action === "medical") {
+      const supply = this.inventory.items.find((candidate) => candidate.name === "bandage") ?? this.inventory.items.find((candidate) => candidate.name === "medical kit");
+      if (!supply) {
+        this.toast("the medical station needs a bandage or medical kit", true);
+        return;
+      }
+      this.inventory.remove(supply.id);
+      this.player.health = clamp(this.player.health + supply.stats.heal + 12, 0, 100);
+      this.toast(`treated wounds with ${supply.name}`);
+    } else if (definition.action === "produce") {
+      if (this.world_minutes < (item.ready_at ?? 0)) {
+        const remaining = Math.max(1, Math.ceil((item.ready_at - this.world_minutes) / 60));
+        this.toast(`${definition.name} will be ready in about ${remaining} hour${remaining === 1 ? "" : "s"}`, true);
+        return;
+      }
+      for (let index = 0; index < definition.production.count; index += 1) this.inventory.add(make_item(definition.production.item), false);
+      item.ready_at = this.world_minutes + definition.production.interval;
+      this.toast(`collected ${definition.production.count} ${definition.production.item}`);
+    } else if (definition.action === "shower") {
+      this.world_minutes += 15;
+      this.player.health = clamp(this.player.health + 8, 0, 100);
+      this.player.stamina = 100;
+      this.player.hunger = clamp(this.player.hunger - 2, 0, 100);
+      this.toast("washed, warmed up and recovered");
+    } else if (definition.action === "heater") {
+      this.world_minutes += 10;
+      this.player.health = clamp(this.player.health + 5, 0, 100);
+      this.player.stamina = 100;
+      this.toast("warmed up by the heater");
+    } else if (definition.action === "map") {
+      const world_x = this.inside?.building.x ?? this.player.x;
+      const world_y = this.inside?.building.y ?? this.player.y;
+      const block_x = Math.floor(world_x / CELL);
+      const block_y = Math.floor(world_y / CELL);
+      const district = districts[this.world.district(block_x, block_y)].name;
+      const threats = this.active_enemies().filter((enemy) => !enemy.dead && distance_sq(enemy.x, enemy.y, this.player.x, this.player.y) <= 900 ** 2).length;
+      this.toast(`${district} · ${this.world.road(block_x, block_y)} / ${this.world.road(block_x, block_y, true)} · ${threats} nearby infected`);
+    } else if (definition.action === "rally") {
+      const center_x = item.x + item.w * .5;
+      const center_y = item.y + item.h * .5;
+      const team = this.companions.filter((survivor) => !survivor.dead && !survivor.remote);
+      for (const survivor of team) {
+        survivor.order = "hold";
+        survivor.order_x = center_x;
+        survivor.order_y = center_y;
+      }
+      this.toast(`${team.length} teammate${team.length === 1 ? "" : "s"} assigned to this rally point`);
+    } else if (definition.action === "sensor") {
+      const center_x = item.x + item.w * .5;
+      const center_y = item.y + item.h * .5;
+      const threats = this.active_enemies().filter((enemy) => !enemy.dead && distance_sq(enemy.x, enemy.y, center_x, center_y) <= 850 ** 2).length;
+      this.toast(`${threats} infected detected within sensor range`);
+    } else if (definition.action === "jukebox") {
       item.active = item.active === false;
-      this.toast(`${item.kind} ${item.active ? "active" : "switched off"}`);
-    } else if (item.type === "radio_center") {
+      if (item.active) {
+        this.player.stamina = 100;
+        for (const survivor of this.companions) if (!survivor.dead && !survivor.remote) survivor.order = "follow";
+        this.sound.tone(220, .18, .035, "triangle", 180);
+      }
+      this.toast(`${definition.name} ${item.active ? "playing" : "switched off"}`);
+    } else if (definition.action === "radio") {
       this.open_radio_center();
       return;
+    } else if (definition.toggle) {
+      item.active = item.active === false;
+      this.toast(`${definition.name} ${item.active ? "active" : "switched off"}`);
+    } else if (definition.action === "barrier") {
+      this.toast(`${definition.name} is holding this route`);
+    } else {
+      this.toast(`${definition.name} is ready`);
     }
     this.update_hud();
     this.save(true);
@@ -3271,36 +3452,43 @@ class Game {
   }
 
   draw_built_furniture(context, items) {
-    const colors = {
-      cupboard: "#725f48",
-      chest: "#65513b",
-      shelf: "#7b684c",
-      bed: "#73817b",
-      cooker: "#70756f",
-      crafting_bench: "#765e43",
-      turret: "#596866",
-      generator: "#6c684d",
-      campfire: "#8b5634",
-      radio_center: "#586d67",
-    };
     for (const item of items) {
-      context.fillStyle = item.active === false ? "#414541" : colors[item.type] ?? "#62584a";
+      const definition = furniture_catalog[item.type];
+      if (!definition) continue;
+      context.fillStyle = item.active === false ? "#414541" : definition.color ?? "#62584a";
       context.fillRect(item.x, item.y, item.w, item.h);
       context.strokeStyle = item.type === "radio_center" && this.base?.radio_id === item.id ? "#cfde93" : "rgba(236,231,205,.34)";
       context.lineWidth = item.type === "radio_center" ? 2 : 1;
       context.strokeRect(item.x + .5, item.y + .5, item.w - 1, item.h - 1);
       const center_x = item.x + item.w * .5;
       const center_y = item.y + item.h * .5;
-      if (item.type === "turret") {
+      if (definition.defence?.kind === "turret") {
         context.fillStyle = "#27302e";
         context.beginPath();
         context.arc(center_x, center_y, Math.min(item.w, item.h) * .28, 0, TAU);
         context.fill();
+        context.strokeStyle = "#9bad83";
+        context.beginPath();
+        context.moveTo(center_x, center_y);
+        context.lineTo(center_x + Math.cos(item.rotation * Math.PI * .5) * item.w * .48, center_y + Math.sin(item.rotation * Math.PI * .5) * item.h * .48);
+        context.stroke();
       } else if (item.type === "campfire") {
         context.fillStyle = "#d58b45";
         context.beginPath();
         context.arc(center_x, center_y, 10, 0, TAU);
         context.fill();
+      } else if (definition.light) {
+        context.fillStyle = item.active === false ? "#4a4b45" : "#d9c786";
+        context.beginPath();
+        context.arc(center_x, center_y, Math.max(3, Math.min(item.w, item.h) * .16), 0, TAU);
+        context.fill();
+        if (definition.light.cone) {
+          context.strokeStyle = "rgba(223,227,190,.62)";
+          context.beginPath();
+          context.moveTo(center_x, center_y);
+          context.lineTo(center_x + Math.cos(item.rotation * Math.PI * .5) * Math.max(item.w, item.h) * .55, center_y + Math.sin(item.rotation * Math.PI * .5) * Math.max(item.w, item.h) * .55);
+          context.stroke();
+        }
       } else if (item.type === "radio_center") {
         context.strokeStyle = "#bfd18e";
         context.beginPath();
@@ -3312,7 +3500,7 @@ class Game {
       context.textAlign = "center";
       context.textBaseline = "middle";
       context.fillStyle = "rgba(239,237,222,.66)";
-      context.fillText(item.kind.toUpperCase(), center_x, center_y);
+      if (item.w >= 44 && item.h >= 28) context.fillText(item.kind.toUpperCase(), center_x, center_y);
     }
   }
 
@@ -3664,19 +3852,70 @@ class Game {
   }
 
   draw_light(context) {
+    let darkness;
     if (this.inside || this.sewer) {
-      const darkness = this.sewer ? .46 : .18;
-      context.fillStyle = this.inventory.items.some((item) => item.tags.includes("light")) ? `rgba(2,4,3,${darkness * .4})` : `rgba(2,4,3,${darkness})`;
-      context.fillRect(0, 0, this.screen_w, this.screen_h);
+      darkness = this.sewer ? .72 : .5;
+    } else {
+      const hour = (this.world_minutes % 1440) / 60;
+      const daylight = clamp(Math.sin(((hour - 5.5) / 13) * Math.PI), 0, 1);
+      darkness = .68 * (1 - daylight);
+    }
+    if (darkness <= .01) return;
+    context.fillStyle = `rgba(3,6,7,${darkness})`;
+    context.fillRect(0, 0, this.screen_w, this.screen_h);
+    const sources = [];
+    if (!this.sewer) {
+      const powered = this.inside ? this.building_powered(this.inside.building.id) : false;
+      for (const item of this.built_nearby()) {
+        const definition = furniture_catalog[item.type];
+        if (!definition?.light || item.active === false || (definition.powered && !powered)) continue;
+        sources.push({ x: item.x + item.w * .5, y: item.y + item.h * .5, angle: item.rotation * Math.PI * .5, light: definition.light, id: item.id });
+      }
+    }
+    if (this.inventory.items.some((item) => item.tags.includes("light"))) {
+      sources.push({ x: this.player.x, y: this.player.y, angle: this.player.angle, light: { range: 430, cone: .58, strength: .86, color: "rgba(226,238,217,.09)" }, id: "player_flashlight" });
+    }
+    for (const source of sources) this.draw_light_source(context, source);
+  }
+
+  draw_light_source(context, source) {
+    const screen_x = this.screen_w * .5 + (source.x - this.camera.x) * this.camera.zoom;
+    const screen_y = this.screen_h * .5 + (source.y - this.camera.y) * this.camera.zoom;
+    const flicker = source.light.flicker ? .94 + Math.sin(this.play_time * 17 + text_hash(source.id)) * .035 : 1;
+    const range = source.light.range * this.camera.zoom * flicker;
+    if (screen_x + range < 0 || screen_y + range < 0 || screen_x - range > this.screen_w || screen_y - range > this.screen_h) return;
+    context.save();
+    context.translate(screen_x, screen_y);
+    context.rotate(source.angle ?? 0);
+    context.beginPath();
+    if (source.light.cone) {
+      context.moveTo(0, 0);
+      context.arc(0, 0, range, -source.light.cone * .5, source.light.cone * .5);
+      context.closePath();
+    } else {
+      context.arc(0, 0, range, 0, TAU);
+    }
+    context.clip();
+    const cutout = context.createRadialGradient(0, 0, range * .04, 0, 0, range);
+    if (!cutout?.addColorStop) {
+      context.restore();
       return;
     }
-    const hour = (this.world_minutes % 1440) / 60;
-    const daylight = clamp(Math.sin(((hour - 5.5) / 13) * Math.PI), 0, 1);
-    const darkness = .68 * (1 - daylight);
-    if (darkness > .01) {
-      context.fillStyle = `rgba(5,10,16,${darkness})`;
-      context.fillRect(0, 0, this.screen_w, this.screen_h);
+    cutout.addColorStop(0, `rgba(0,0,0,${source.light.strength})`);
+    cutout.addColorStop(.68, `rgba(0,0,0,${source.light.strength * .62})`);
+    cutout.addColorStop(1, "rgba(0,0,0,0)");
+    context.globalCompositeOperation = "destination-out";
+    context.fillStyle = cutout;
+    context.fillRect(-range, -range, range * 2, range * 2);
+    const tint = context.createRadialGradient(0, 0, 0, 0, 0, range);
+    if (tint?.addColorStop) {
+      tint.addColorStop(0, source.light.color);
+      tint.addColorStop(1, "rgba(0,0,0,0)");
+      context.globalCompositeOperation = "source-over";
+      context.fillStyle = tint;
+      context.fillRect(-range, -range, range * 2, range * 2);
     }
+    context.restore();
   }
 
   draw_crosshair(context) {
