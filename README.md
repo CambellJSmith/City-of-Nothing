@@ -15,6 +15,7 @@ The entire game is plain HTML, CSS, and JavaScript. There is no build step, pack
 - Walker, runner, and brute infected variants
 - Autonomous human survivors who roam, manage supplies, fight infected, converse, and can join the player
 - Persistent companion groups that travel through streets, buildings, and floors in formation
+- Nearby group voice orders for attacking, following, looting containers, and holding ground
 - Free-form crafting that combines any two items
 - Persistent inventory, equipment, companions, encountered survivors, looted containers, defeated infected, location, time, and statistics
 - Desktop mouse and keyboard controls plus touch controls for coarse-pointer devices
@@ -41,13 +42,14 @@ Then open `http://localhost:8080/`.
 | Mouse | Aim |
 | Left click or `Space` | Attack |
 | `E` | Interact, talk, recruit, enter, exit, search, or use stairs |
+| `Q` | Shout a tactical order to nearby companions |
 | `I` or `Tab` | Open or close inventory |
 | `C` | Open or close crafting |
 | `1` | Equip the strongest carried weapon |
 | `2` | Eat the best carried edible food |
 | `Esc` | Close the active panel |
 
-On touch devices, use the virtual movement stick and the **use** and **attack** buttons. The player faces the movement direction when no mouse aim is available.
+On touch devices, use the virtual movement stick and the **use**, **attack**, and **orders** buttons. The player faces the movement direction when no mouse aim is available.
 
 ## project structure
 
@@ -69,7 +71,7 @@ On touch devices, use the virtual movement stick and the **use** and **attack** 
 - `Inventory` owns items, equipment, consumption, crafting, and inventory UI rendering.
 - `Sound` creates short effects with the Web Audio API.
 
-`Game` also owns infected and human-survivor AI. Independent survivors roam nearby blocks, use personal inventories, fight with usable weapons, and can be recruited into a formation that follows the player across world transitions.
+`Game` also owns infected and human-survivor AI. Independent survivors roam nearby blocks, use personal inventories, fight with usable weapons, and can be recruited into a formation that follows the player across world transitions. Recruited survivors retain individual tactical orders and can divide nearby container-looting work without duplicating targets.
 
 Only the area around the player is simulated and rendered. Generated world data is recreated from stable IDs and the fixed seed, while player-made changes are recorded separately. This keeps the world large without storing every block or interior.
 
@@ -88,7 +90,7 @@ The save contains:
 - Kill, loot, and crafting statistics
 - Looted container IDs and remaining generated container contents
 - Defeated infected IDs
-- Recruited companions, their inventories, health, hunger, and kill counts
+- Recruited companions, their inventories, health, hunger, kill counts, and current orders
 - Encountered independent survivors and permanently lost survivor IDs
 
 Starting a new run removes the current save. Death does not overwrite it, so **return to last save** restores the most recent surviving state.
