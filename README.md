@@ -16,7 +16,9 @@ The entire game is plain HTML, CSS, and JavaScript. There is no build step, pack
 - Autonomous human survivors who roam, manage supplies, fight infected, converse, and can join the player
 - Persistent companion groups that travel through streets, buildings, and floors in formation
 - Nearby group voice orders for attacking, following, looting containers, and holding ground
-- Furniture construction for cupboards, chests, shelves, beds, cookers, crafting benches, turrets, generators, campfires, and radio centers
+- A 58-piece furniture catalog spanning storage, comfort, workshops, supply production, defences, power, command, and lighting
+- Functional beds and seating, medical and recovery stations, water and food production, rally/map tools, three turrets, traps, fences, alarms, and sensors
+- Fourteen light-emitting furnishings with distinct sizes, intensities, circular ranges, wide cones, narrow long throws, power requirements, colors, and flicker
 - Radio-designated team bases whose complete buildings remain loaded and active off screen
 - Radio assignments for exploring, collecting specific supplies, returning, and changing individual combat engagement
 - A fully connected city-wide sewer network with street and basement access, tunnels, chambers, infected, and cross-building travel
@@ -78,7 +80,7 @@ On touch devices, use the virtual movement stick and the **use**, **attack**, an
 
 `Game` also owns infected and human-survivor AI. Independent survivors roam nearby blocks, use personal inventories, fight with usable weapons, and can be recruited into a formation that follows the player across world transitions. Recruited survivors retain individual tactical orders and can divide nearby container-looting work without duplicating targets.
 
-Only the area around the player is normally simulated and rendered. A radio-designated base is the exception: all of its floors are pinned and continue simulating while the player is elsewhere. Sewer geometry is generated locally from a globally connected plan, so the underground network covers the city without being stored as one enormous map.
+Only the area around the player is normally simulated and rendered. A radio-designated base is the exception: all of its floors are pinned and continue simulating while the player is elsewhere. Generic defence definitions keep standard, heavy, and shotgun turrets plus contact traps active through the same bounded base update. Light cutouts are composited only for visible sources in the current location. Sewer geometry is generated locally from a globally connected plan, so the underground network covers the city without being stored as one enormous map.
 
 See the [architecture documentation](docs/architecture.md) for the full runtime model.
 
