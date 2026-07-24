@@ -4,6 +4,8 @@ const CELL = 1000;
 const ROAD = 168;
 const CITY_RADIUS = 64;
 const PLAYER_RADIUS = 18;
+const INFECTED_MELEE_REACH = 16;
+const INFECTED_ATTACK_TIME = .18;
 const USE_RANGE = 76;
 const TAU = Math.PI * 2;
 
@@ -1429,7 +1431,7 @@ class Game {
   enemy(id, x, y, random) {
     const variant_roll = random();
     const variant = variant_roll > .93 ? "brute" : variant_roll < .18 ? "runner" : "walker";
-    return { id, x, y, angle: random() * TAU, health: variant === "brute" ? 82 : 45 + random() * 18, speed: variant === "brute" ? 50 : 55 + random() * 22, radius: variant === "brute" ? 24 : 18, attack: random(), wander: random() * 3, wander_angle: random() * TAU, alerted: false, dead: false, variant };
+    return { id, x, y, angle: random() * TAU, health: variant === "brute" ? 82 : 45 + random() * 18, speed: variant === "brute" ? 50 : 55 + random() * 22, radius: variant === "brute" ? 24 : 18, attack: random(), melee_time: 0, wander: random() * 3, wander_angle: random() * TAU, alerted: false, dead: false, variant };
   }
 
   enemies_outside(block) {
@@ -1475,16 +1477,31 @@ class Game {
   update_enemies(delta) {
     for (const enemy of this.active_enemies()) {
       if (enemy.dead) continue;
-      enemy.attack -= delta;
+      enemy.attack = Math.max(0, enemy.attack - delta);
+      enemy.melee_time = Math.max(0, (enemy.melee_time ?? 0) - delta);
       enemy.wander -= delta;
       const distance = Math.hypot(this.player.x - enemy.x, this.player.y - enemy.y);
       if (distance < 420 || enemy.alerted) {
         enemy.alerted = distance < 760;
-        const direction = normal(this.player.x - enemy.x, this.player.y - enemy.y);
-        enemy.angle = Math.atan2(direction.y, direction.x);
-        this.move_enemy(enemy, direction.x * enemy.speed * (enemy.variant === "runner" ? 1.35 : 1) * delta, direction.y * enemy.speed * (enemy.variant === "runner" ? 1.35 : 1) * delta);
-        if (distance < enemy.radius + PLAYER_RADIUS + 8 && enemy.attack <= 0) {
-          enemy.attack = enemy.variant === "runner" ? .8 : 1.15;
+        const direction_x = distance > .0001 ? (this.player.x - enemy.x) / distance : Math.cos(enemy.angle);
+        const direction_y = distance > .0001 ? (this.player.y - enemy.y) / distance : Math.sin(enemy.angle);
+        const move_speed = enemy.speed * (enemy.variant === "runner" ? 1.35 : 1);
+        const contact_distance = enemy.radius + PLAYER_RADIUS;
+        const melee_distance = contact_distance + INFECTED_MELEE_REACH;
+        enemy.angle = Math.atan2(direction_y, direction_x);
+        if (distance < contact_distance) {
+          const retreat_distance = Math.min(melee_distance - distance, move_speed * delta);
+          this.move_enemy(enemy, -direction_x * retreat_distance, -direction_y * retreat_distance);
+          continue;
+        }
+        let attack_distance = distance;
+        if (distance > melee_distance) {
+          const approach_distance = Math.min(distance - melee_distance, move_speed * delta);
+          if (this.move_enemy(enemy, direction_x * approach_distance, direction_y * approach_distance)) attack_distance -= approach_distance;
+        }
+        if (attack_distance <= melee_distance + .001 && enemy.attack <= 0) {
+          enemy.attack = enemy.variant === "runner" ? .8 : enemy.variant === "brute" ? 1.35 : 1.15;
+          enemy.melee_time = INFECTED_ATTACK_TIME;
           this.damage_player(enemy.variant === "brute" ? 18 : 9);
         }
       } else {
@@ -1511,6 +1528,7 @@ class Game {
     }
     if (!blocked) { enemy.x = x; enemy.y = y; }
     else enemy.wander_angle += Math.PI * .63;
+    return !blocked;
   }
 
   damage_player(raw) {
@@ -2057,6 +2075,8 @@ class Game {
       context.save();
       context.translate(enemy.x, enemy.y);
       context.rotate(enemy.angle);
+      const melee_progress = clamp((enemy.melee_time ?? 0) / INFECTED_ATTACK_TIME, 0, 1);
+      context.translate(Math.sin(melee_progress * Math.PI) * 8, 0);
       context.fillStyle = enemy.variant === "brute" ? "#655d3f" : enemy.variant === "runner" ? "#724a42" : "#58644c";
       context.beginPath();
       context.arc(0, 0, enemy.radius, 0, TAU);
@@ -2231,4 +2251,4 @@ class Game {
 
 const game = new Game();
 globalThis.city_of_nothing = game;
-globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, interior_template_catalog, interior_template_families, exterior_roof_patterns, city_geometry: { cell: CELL, road: ROAD } };
+globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, interior_template_catalog, interior_template_families, exterior_roof_patterns, infected_combat: { melee_reach: INFECTED_MELEE_REACH, attack_time: INFECTED_ATTACK_TIME, player_radius: PLAYER_RADIUS }, city_geometry: { cell: CELL, road: ROAD } };
