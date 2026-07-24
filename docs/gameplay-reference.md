@@ -80,11 +80,27 @@ Recruited companions:
 - Follow in a spaced formation behind the player.
 - Accelerate to catch up and regroup if separated.
 - Fight the same nearby infected using their own weapons and ammunition.
+- Receive tactical voice orders when they are within 900 world units of the player.
 - Enter and leave buildings with the player.
 - Move safely between upper floors and basements.
-- Preserve health, hunger, inventory, equipment choice, and kills in the save.
+- Preserve health, hunger, inventory, equipment choice, kills, and current order in the save.
 
 A recruited companion who dies is removed from the group and does not regenerate. Items dropped by an infected killed by a survivor go into that survivor's inventory, giving them additional food or materials to use or carry.
+
+### group orders
+
+Press `Q` or use the **orders** quick action to open the voice-command panel. A shout affects every living recruited companion within 900 world units; companions farther away keep their previous orders. Shouting is noisy and alerts infected within part of that radius.
+
+| Order | Behavior |
+| --- | --- |
+| **attack everything you can** | Hunt infected up to 1,500 world units away, then continue following between targets |
+| **stay with me** | Maintain formation and engage only infected close to the player while the companion is keeping up |
+| **loot all nearby containers** | Divide unlooted containers within 900 world units of the shout, move to them, and carry all generated contents in personal inventories |
+| **hold this position** | Return to the position where each companion heard the command and defend a 420-unit area |
+
+Looting companions reserve different containers so the group does not duplicate work. They will interrupt looting to defend themselves against infected within 280 world units. Once a companion can find no unreserved container in range, that companion returns to formation.
+
+Container contents, emptied-container state, item IDs, and found-item statistics use the same persistent data whether the player or a companion performs the search. Hold and loot tasks return to **stay with me** when the group changes buildings or floors; attack and follow orders continue.
 
 ## infected
 
@@ -193,10 +209,11 @@ Death pauses the run and leaves the last save untouched. **Return to last save**
 | Mouse | Aim |
 | Left click / `Space` | Attack |
 | `E` | Use the nearest interaction, including talking to survivors |
+| `Q` | Open group orders and shout to nearby companions |
 | `I` / `Tab` | Toggle inventory |
 | `C` | Toggle crafting |
 | `1` | Equip strongest weapon |
 | `2` | Eat best food |
 | `Esc` | Close panel |
 
-Touch mode provides an analog movement stick plus **use** and **attack** buttons. Inventory and crafting remain available from the quick bar.
+Touch mode provides an analog movement stick plus **use**, **attack**, and **orders** buttons. Inventory and crafting remain available from the quick bar.
