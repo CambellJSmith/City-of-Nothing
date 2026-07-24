@@ -9,7 +9,7 @@ The entire game is plain HTML, CSS, and JavaScript. There is no build step, pack
 - A deterministic 128 × 128 city made from 16,384 streamed blocks
 - Seven districts with different building mixes and infected density
 - Enterable houses, apartments, shops, offices, hospitals, civic buildings, factories, warehouses, schools, diners, and police stations
-- Procedural multi-floor interiors, including upper floors and basements
+- Procedural multi-floor interiors selected from 371 connected base templates, including upper floors and basements
 - Melee weapons, firearms, armor, food, medicine, ammunition, tools, and materials
 - Walker, runner, and brute infected variants
 - Free-form crafting that combines any two items
@@ -53,7 +53,7 @@ On touch devices, use the virtual movement stick and the **use** and **attack** 
 | `index.html` | Canvas, HUD, menus, inventory, crafting, loot, guide, death screen, and touch-control markup |
 | `styles.css` | Visual system, responsive layouts, overlays, HUD components, touch controls, and animation |
 | `game.js` | Data definitions, procedural generation, simulation, input, combat, inventory, crafting, persistence, audio, and rendering |
-| `tests.mjs` | Dependency-free Node regression tests, including generated-interior connectivity and transition safety |
+| `tests.mjs` | Dependency-free Node regression tests, including exhaustive template connectivity, generated variety, and transition safety |
 | [`docs/architecture.md`](docs/architecture.md) | Runtime design, state ownership, generation, rendering, persistence, and performance |
 | [`docs/gameplay-reference.md`](docs/gameplay-reference.md) | Current mechanics, districts, combat, infected, loot, crafting, and saves |
 | [`docs/development.md`](docs/development.md) | Local workflow, extension points, debugging tools, validation, and deployment |
