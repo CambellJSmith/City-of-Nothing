@@ -256,6 +256,40 @@ assert.equal(game.inventory.items.length, 5, "starter inventory is created");
 assert.equal(game.inventory.equipped("weapon").name, "baseball bat", "starter weapon is equipped");
 assert.ok(storage.has("city_of_nothing_save_v1"), "new game saves locally");
 
+const original_active_enemies = game.active_enemies;
+const original_move_enemy = game.move_enemy;
+const original_damage_player = game.damage_player;
+const original_player_state = { ...game.player };
+const original_inside = game.inside;
+const melee_enemy = { id: "infected:test:melee", x: 260, y: 0, angle: Math.PI, health: 50, speed: 60, radius: 18, attack: 0, melee_time: 0, wander: 0, wander_angle: 0, alerted: true, dead: false, variant: "walker" };
+let infected_attacks = 0;
+game.inside = null;
+game.player.x = 0;
+game.player.y = 0;
+game.active_enemies = () => [melee_enemy];
+game.move_enemy = (enemy, dx, dy) => { enemy.x += dx; enemy.y += dy; return true; };
+game.damage_player = () => { infected_attacks += 1; };
+game.update_enemies(1);
+assert.ok(melee_enemy.x < 260, "alerted infected approaches a distant player");
+assert.equal(infected_attacks, 0, "infected does not deal contact damage while approaching");
+game.update_enemies(10);
+const expected_melee_distance = melee_enemy.radius + api.infected_combat.player_radius + api.infected_combat.melee_reach;
+assert.ok(Math.abs(Math.hypot(melee_enemy.x - game.player.x, melee_enemy.y - game.player.y) - expected_melee_distance) < .001, "infected stops at melee reach instead of entering the player");
+assert.equal(infected_attacks, 1, "infected performs a melee attack after reaching range");
+game.update_enemies(.1);
+assert.equal(infected_attacks, 1, "infected melee attacks respect their cooldown");
+melee_enemy.x = 4;
+melee_enemy.y = 0;
+melee_enemy.attack = 0;
+game.update_enemies(1);
+assert.ok(Math.hypot(melee_enemy.x - game.player.x, melee_enemy.y - game.player.y) >= melee_enemy.radius + api.infected_combat.player_radius, "overlapping infected backs out of the player's collision space");
+assert.equal(infected_attacks, 1, "overlapping infected retreats before attacking");
+game.active_enemies = original_active_enemies;
+game.move_enemy = original_move_enemy;
+game.damage_player = original_damage_player;
+Object.assign(game.player, original_player_state);
+game.inside = original_inside;
+
 const family_test_types = {
   vertical_spine: "office",
   horizontal_gallery: "shop",
