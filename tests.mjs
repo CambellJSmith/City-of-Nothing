@@ -167,7 +167,8 @@ function assert_interior_connected(layout, label) {
   assert.equal(visited_count, walkable_count, `${label} has no isolated rooms`);
   for (const room of layout.rooms) assert.ok(point_is_walkable(layout, room.x + room.w * .5, room.y + room.h * .5), `${label} room centre is usable`);
   for (const point of [layout.entry, layout.up, layout.down]) if (point) assert.ok(point_is_walkable(layout, point.x, point.y), `${label} transition is clear`);
-  for (const stairs of [layout.up, layout.down]) if (stairs) assert.ok(point_is_walkable(layout, stairs.x, stairs.y + 58), `${label} stair arrival is clear`);
+  const stair_transitions = [[layout.up, layout.up_arrival], [layout.down, layout.down_arrival]];
+  for (const [stairs, arrival] of stair_transitions) if (stairs) assert.ok(point_is_walkable(layout, arrival?.x ?? stairs.x, arrival?.y ?? stairs.y + 58), `${label} stair arrival is clear`);
   for (const door of layout.doors) assert.ok(door.width >= 120, `${label} doorway is comfortably wide`);
   for (const passage of layout.passages) assert_passage_clear(layout, passage, label);
   if (layout.entry) assert.ok(layout.passages.some((passage) => passage.kind === "entry"), `${label} has a protected entry route`);
@@ -178,11 +179,60 @@ function interior_geometry_fingerprint(layout) {
   return `${layout.width}x${layout.height}:${walls}`;
 }
 
+function assert_building_faces_nearest_road(building) {
+  const { cell, road } = api.city_geometry;
+  const block_left = building.block_x * cell + road * .5;
+  const block_top = building.block_y * cell + road * .5;
+  const block_right = (building.block_x + 1) * cell - road * .5;
+  const block_bottom = (building.block_y + 1) * cell - road * .5;
+  const distances = {
+    north: building.y - block_top,
+    east: block_right - building.x - building.w,
+    south: block_bottom - building.y - building.h,
+    west: building.x - block_left,
+  };
+  const nearest = Math.min(...Object.values(distances));
+  assert.ok(Math.abs(distances[building.road_side] - nearest) < .001, `${building.id} faces its closest road`);
+  assert.equal(building.quarter_turns, { south: 0, west: 1, north: 2, east: 3 }[building.road_side], `${building.id} uses the matching rotation`);
+  assert.ok(building.exterior_variant >= 0 && building.exterior_variant < api.exterior_roof_patterns.length, `${building.id} has a valid exterior`);
+  if (building.road_side === "north") {
+    assert.equal(building.door_y, building.y - 4, `${building.id} has a north door`);
+    assert.ok(building.door_x > building.x && building.door_x < building.x + building.w, `${building.id} north door is on its façade`);
+  } else if (building.road_side === "east") {
+    assert.equal(building.door_x, building.x + building.w + 4, `${building.id} has an east door`);
+    assert.ok(building.door_y > building.y && building.door_y < building.y + building.h, `${building.id} east door is on its façade`);
+  } else if (building.road_side === "west") {
+    assert.equal(building.door_x, building.x - 4, `${building.id} has a west door`);
+    assert.ok(building.door_y > building.y && building.door_y < building.y + building.h, `${building.id} west door is on its façade`);
+  } else {
+    assert.equal(building.door_y, building.y + building.h + 4, `${building.id} has a south door`);
+    assert.ok(building.door_x > building.x && building.door_x < building.x + building.w, `${building.id} south door is on its façade`);
+  }
+  const direction = { north: { x: 0, y: -1 }, east: { x: 1, y: 0 }, south: { x: 0, y: 1 }, west: { x: -1, y: 0 } }[building.road_side];
+  const exit_x = building.door_x + direction.x * 48;
+  const exit_y = building.door_y + direction.y * 48;
+  const nearest_x = Math.max(building.x, Math.min(exit_x, building.x + building.w));
+  const nearest_y = Math.max(building.y, Math.min(exit_y, building.y + building.h));
+  assert.ok((exit_x - nearest_x) ** 2 + (exit_y - nearest_y) ** 2 > 18 ** 2, `${building.id} exterior arrival clears the wall`);
+}
+
+function assert_ground_floor_orientation(layout, building) {
+  const expected = {
+    north: { entry: { axis: "y", value: 90 }, exit: { axis: "y", value: 38 } },
+    east: { entry: { axis: "x", value: layout.width - 90 }, exit: { axis: "x", value: layout.width - 38 } },
+    south: { entry: { axis: "y", value: layout.height - 90 }, exit: { axis: "y", value: layout.height - 38 } },
+    west: { entry: { axis: "x", value: 90 }, exit: { axis: "x", value: 38 } },
+  }[building.road_side];
+  assert.ok(Math.abs(layout.entry[expected.entry.axis] - expected.entry.value) < .001, `${building.id} interior entry faces ${building.road_side}`);
+  assert.ok(Math.abs(layout.exit[expected.exit.axis] - expected.exit.value) < .001, `${building.id} interior exit faces ${building.road_side}`);
+}
+
 assert.ok(game, "game initializes");
 assert.equal(ids.length, new Set(ids).size, "HTML ids are unique");
 assert.match(html, /<script src="game\.js"><\/script>/, "game script supports direct local launch");
 assert.doesNotMatch(html, /<script type="module"/, "local launch does not depend on module loading");
 assert.match(styles, /@media \(max-width: 620px\), \(pointer: coarse\)/, "touch layout is included");
+assert.match(source, /floor_label\(this\.inside\.floor\)\.toUpperCase\(\)\}`, 10, 14\)/, "building and floor label stays inside the upper-left outer wall");
 const dom_references = [...source.matchAll(/\bdom\.([a-z_]+)/g)].map((match) => match[1]);
 for (const id of new Set(dom_references)) assert.ok(ids.includes(id), `DOM reference #${id} exists`);
 for (const table of Object.values(api.loot_tables)) {
@@ -305,17 +355,29 @@ const generated_template_ids = new Map();
 const generated_template_families = new Map();
 const generated_geometries = new Map();
 const generated_dimensions = new Map();
+const generated_road_sides = new Set();
+const generated_exterior_variants = new Set();
 let determinism_checked = false;
-for (let y = -12; y <= 12; y += 1) {
-  for (let x = -12; x <= 12; x += 1) {
+for (let y = -64; y < 64; y += 1) {
+  for (let x = -64; x < 64; x += 1) {
     for (const generated of game.world.block(x, y).buildings) {
       building_types.add(generated.type);
+      generated_road_sides.add(generated.road_side);
+      generated_exterior_variants.add(generated.exterior_variant);
+      assert_building_faces_nearest_road(generated);
+      assert.ok(generated.w >= 140 && generated.h >= 140, `${generated.id} retains a useful exterior footprint`);
+      for (const fixture of api.exterior_roof_patterns[generated.exterior_variant]) {
+        const oriented = game.oriented_exterior_rect(generated, fixture);
+        assert.ok(oriented.x >= generated.x && oriented.y >= generated.y && oriented.x + oriented.w <= generated.x + generated.w && oriented.y + oriented.h <= generated.y + generated.h, `${generated.id} roof fixture stays inside its rotated exterior`);
+      }
       if (!representative_buildings.has(generated.type)) representative_buildings.set(generated.type, []);
       if (representative_buildings.get(generated.type).length < 12) representative_buildings.get(generated.type).push(generated);
     }
   }
 }
 assert.equal(building_types.size, 11, "the city contains every building type");
+assert.deepEqual([...generated_road_sides].sort(), ["east", "north", "south", "west"], "buildings face roads in every direction");
+assert.equal(generated_exterior_variants.size, api.exterior_roof_patterns.length, "the city uses every exterior roof pattern");
 for (const [type, buildings] of representative_buildings) {
   for (const generated of buildings) {
     for (let floor = -generated.basements; floor < generated.floors; floor += 1) {
@@ -333,6 +395,7 @@ for (const [type, buildings] of representative_buildings) {
       assert.ok(layout.rooms.length >= 3, `${label} has purposeful rooms`);
       assert.ok(layout.containers.length >= 5, `${label} retains useful searchable loot`);
       assert_interior_connected(layout, template_label);
+      if (floor === 0) assert_ground_floor_orientation(layout, generated);
       if (!determinism_checked) {
         const first_generation = JSON.stringify(layout);
         game.world.interiors.delete(layout.key);
