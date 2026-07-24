@@ -407,14 +407,14 @@ class Inventory {
         : item.stats.armor ? `${item.stats.armor} armor`
           : `${item.stats.durability ?? 1} condition`;
     const equipped = Object.values(this.equipment).includes(item.id) ? '<span class="equipped">equipped</span>' : "";
-    return `<button class="item_card ${this.selected === item.id ? "selected" : ""}" data_item="${safe(item.id)}" type="button">${equipped}<small>${safe(item.category)}</small><strong>${safe(item.name)}</strong><footer><span>${safe(main_stat)}</span><span>${(item.stats.weight ?? 0).toFixed(1)} kg</span></footer></button>`;
+    return `<button class="item_card ${this.selected === item.id ? "selected" : ""}" data-item="${safe(item.id)}" type="button">${equipped}<small>${safe(item.category)}</small><strong>${safe(item.name)}</strong><footer><span>${safe(main_stat)}</span><span>${(item.stats.weight ?? 0).toFixed(1)} kg</span></footer></button>`;
   }
 
   render_inventory() {
     const visible = this.items.filter((item) => this.filter === "all" || item.category === this.filter || (this.filter === "material" && ["material", "tool", "ammo", "medical"].includes(item.category)));
     dom.inventory_grid.innerHTML = visible.length ? visible.map((item) => this.card(item)).join("") : '<span class="empty">nothing in this category</span>';
     dom.carry_weight.textContent = `${this.weight().toFixed(1)} / 35.0 kg`;
-    dom.inventory_grid.querySelectorAll("[data_item]").forEach((button) => {
+    dom.inventory_grid.querySelectorAll("[data-item]").forEach((button) => {
       button.addEventListener("click", () => {
         this.selected = button.dataset.item;
         this.render_inventory();
@@ -432,8 +432,8 @@ class Inventory {
     const stats = Object.entries(item.stats).filter(([, value]) => value !== 0).map(([name, value]) => `<div class="stat"><span>${safe(name)}</span><b>${safe(value)}</b></div>`).join("");
     const tags = item.tags.map((tag) => `<span class="tag ${["inedible", "poisoned"].includes(tag) ? "danger" : ""}">${safe(tag)}</span>`).join("");
     const use_action = item.category === "weapon" || item.slot ? "equip" : item.tags.includes("food") && !item.tags.includes("inedible") ? "eat" : item.tags.includes("medical") ? "medical" : "";
-    dom.item_inspector.innerHTML = `<span class="eyebrow">${safe(item.category)} · ${item.components.length} component${item.components.length === 1 ? "" : "s"}</span><h3>${safe(item.name)}</h3><p>${safe(item.description)}</p><div class="stat_list">${stats}</div><div class="tags">${tags}</div><div class="inspector_actions">${use_action ? `<button class="primary" data_action="${use_action}" type="button">${use_action === "equip" ? "equip item" : use_action === "eat" ? "eat item" : "use medical item"}</button>` : ""}<button class="secondary" data_action="drop" type="button">drop item</button></div>`;
-    dom.item_inspector.querySelectorAll("[data_action]").forEach((button) => button.addEventListener("click", () => {
+    dom.item_inspector.innerHTML = `<span class="eyebrow">${safe(item.category)} · ${item.components.length} component${item.components.length === 1 ? "" : "s"}</span><h3>${safe(item.name)}</h3><p>${safe(item.description)}</p><div class="stat_list">${stats}</div><div class="tags">${tags}</div><div class="inspector_actions">${use_action ? `<button class="primary" data-action="${use_action}" type="button">${use_action === "equip" ? "equip item" : use_action === "eat" ? "eat item" : "use medical item"}</button>` : ""}<button class="secondary" data-action="drop" type="button">drop item</button></div>`;
+    dom.item_inspector.querySelectorAll("[data-action]").forEach((button) => button.addEventListener("click", () => {
       const action = button.dataset.action;
       if (action === "equip") this.equip(item);
       else if (action === "eat") this.eat(item);
@@ -449,7 +449,7 @@ class Inventory {
 
   render_crafting() {
     dom.craft_inventory.innerHTML = this.items.map((item) => this.card(item)).join("");
-    dom.craft_inventory.querySelectorAll("[data_item]").forEach((button) => {
+    dom.craft_inventory.querySelectorAll("[data-item]").forEach((button) => {
       button.classList.toggle("selected", this.craft_ids.includes(button.dataset.item));
       button.addEventListener("click", () => {
         const id = button.dataset.item;
@@ -1131,13 +1131,13 @@ class Game {
     dom.guide_button.addEventListener("click", () => dom.guide_overlay.hidden = false);
     dom.close_guide.addEventListener("click", () => dom.guide_overlay.hidden = true);
     dom.understood_button.addEventListener("click", () => dom.guide_overlay.hidden = true);
-    document.querySelectorAll("[data_close]").forEach((button) => button.addEventListener("click", () => this.close_panels()));
-    document.querySelectorAll("[data_filter]").forEach((button) => button.addEventListener("click", () => {
+    document.querySelectorAll("[data-close]").forEach((button) => button.addEventListener("click", () => this.close_panels()));
+    document.querySelectorAll("[data-filter]").forEach((button) => button.addEventListener("click", () => {
       this.inventory.filter = button.dataset.filter;
-      document.querySelectorAll("[data_filter]").forEach((item) => item.classList.toggle("active", item === button));
+      document.querySelectorAll("[data-filter]").forEach((item) => item.classList.toggle("active", item === button));
       this.inventory.render_inventory();
     }));
-    document.querySelectorAll("[data_quick]").forEach((button) => button.addEventListener("click", () => this.quick(button.dataset.quick)));
+    document.querySelectorAll("[data-quick]").forEach((button) => button.addEventListener("click", () => this.quick(button.dataset.quick)));
     dom.clear_craft.addEventListener("click", () => { this.inventory.craft_ids = []; this.inventory.render_crafting(); });
     dom.craft_button.addEventListener("click", () => this.inventory.craft());
     dom.take_all.addEventListener("click", () => this.take_all());
@@ -1727,8 +1727,8 @@ class Game {
 
   render_container() {
     const items = this.container_items.get(this.active_container) ?? [];
-    dom.container_items.innerHTML = items.length ? items.map((item) => `<div class="loot_row"><span><strong>${safe(item.name)}</strong><small>${safe(item.category)}</small></span><button data_take="${safe(item.id)}" type="button">take</button></div>`).join("") : '<span class="empty">empty</span>';
-    dom.container_items.querySelectorAll("[data_take]").forEach((button) => button.addEventListener("click", () => this.take(button.dataset.take)));
+    dom.container_items.innerHTML = items.length ? items.map((item) => `<div class="loot_row"><span><strong>${safe(item.name)}</strong><small>${safe(item.category)}</small></span><button data-take="${safe(item.id)}" type="button">take</button></div>`).join("") : '<span class="empty">empty</span>';
+    dom.container_items.querySelectorAll("[data-take]").forEach((button) => button.addEventListener("click", () => this.take(button.dataset.take)));
   }
 
   take(id) {
