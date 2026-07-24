@@ -87,6 +87,7 @@ const canvas_context = new Proxy({}, {
     return true;
   },
 });
+canvas_context.createRadialGradient = () => ({ addColorStop() {} });
 
 const elements = new Map(ids.map((id) => [id, new FakeElement(id)]));
 const storage = new Map();
@@ -283,6 +284,12 @@ function place_test_furniture(type) {
   assert.fail(`could not find construction space for ${type}`);
 }
 
+function remove_test_furniture(item) {
+  const floor_items = game.built_at();
+  floor_items.splice(floor_items.indexOf(item), 1);
+  game.container_items.delete(item.id);
+}
+
 assert.ok(game, "game initializes");
 assert.equal(ids.length, new Set(ids).size, "HTML ids are unique");
 const script_version = html.match(/<script src="game\.js\?v=([^"]+)"><\/script>/)?.[1];
@@ -311,7 +318,21 @@ assert.match(html, /stay with me/, "the command interface includes a close forma
 assert.match(html, /loot all nearby containers/, "the command interface includes a container looting order");
 assert.match(html, /hold this position/, "the command interface includes a defensive hold order");
 assert.deepEqual(Object.keys(api.group_orders).sort(), ["attack", "follow", "hold", "loot"], "the survivor AI exposes every supported group order");
-assert.deepEqual(Object.keys(api.furniture_catalog).sort(), ["bed", "campfire", "chest", "cooker", "crafting_bench", "cupboard", "generator", "radio_center", "shelf", "turret"], "every requested furniture type is buildable");
+const original_furniture = ["bed", "campfire", "chest", "cooker", "crafting_bench", "cupboard", "generator", "radio_center", "shelf", "turret"];
+assert.ok(original_furniture.every((type) => api.furniture_catalog[type]), "every original furniture type remains buildable");
+assert.ok(Object.keys(api.furniture_catalog).length >= 55, "the construction catalog contains a massive furniture selection");
+for (const category of ["storage", "comfort", "workshop", "defence", "power", "lighting"]) {
+  assert.ok(Object.values(api.furniture_catalog).filter((definition) => definition.category === category).length >= 3, `${category} has a substantial furniture selection`);
+}
+const light_definitions = Object.values(api.furniture_catalog).filter((definition) => definition.light);
+assert.ok(light_definitions.length >= 10, "the catalog includes many functional light sources");
+assert.ok(new Set(light_definitions.map((definition) => definition.light.range)).size >= 8, "lights have many distinct illumination ranges");
+assert.ok(light_definitions.some((definition) => !definition.light.cone), "lights include circular room illumination");
+assert.ok(light_definitions.filter((definition) => definition.light.cone).length >= 3, "lights include several directional throws");
+assert.ok(api.furniture_catalog.spotlight.light.range > api.furniture_catalog.floodlight.light.range, "spotlights throw farther than floodlights");
+assert.ok(api.furniture_catalog.spotlight.light.cone < api.furniture_catalog.floodlight.light.cone, "spotlights are narrower than floodlights");
+assert.ok(api.furniture_catalog.ceiling_light.light.range > api.furniture_catalog.table_lamp.light.range, "ceiling lights cover more space than table lamps");
+assert.ok(light_definitions.some((definition) => definition.powered) && light_definitions.some((definition) => !definition.powered), "powered and independent lights are both available");
 assert.deepEqual(Object.keys(api.radio_missions).sort(), ["explore", "food", "junk", "medicine", "return", "weapons"], "the radio supports every requested field assignment");
 assert.deepEqual(Object.keys(api.engagement_rules).sort(), ["aggressive", "avoid", "defensive", "normal"], "radio engagement rules cover passive through aggressive behavior");
 for (const definition of Object.values(api.furniture_catalog)) {
@@ -573,6 +594,47 @@ assert.ok(game.container_items.get(built_chest.id).some((item) => item.id === st
 game.take(stored_item.id);
 assert.ok(game.inventory.items.some((item) => item.id === stored_item.id), "stored items can be taken back");
 game.close_panels();
+game.render_build_catalog();
+assert.equal(elements.get("build_catalog").querySelectorAll("[data-build]").length, Object.keys(api.furniture_catalog).length, "the categorized build interface renders every catalog entry");
+
+const built_battery = place_test_furniture("battery_bank");
+assert.equal(game.building_powered(building.id), true, "a battery bank provides quiet building-wide power");
+game.use_furniture(built_battery);
+assert.equal(game.building_powered(building.id), false, "power sources can be switched off");
+game.use_furniture(built_battery);
+assert.equal(game.building_powered(building.id), true, "power sources can be reactivated");
+
+const built_floodlight = place_test_furniture("floodlight");
+game.use_furniture(built_floodlight);
+assert.equal(built_floodlight.active, false, "constructed lights can be switched off");
+game.use_furniture(built_floodlight);
+assert.equal(built_floodlight.active, true, "constructed lights can be switched back on");
+remove_test_furniture(built_floodlight);
+remove_test_furniture(built_battery);
+
+const built_collector = place_test_furniture("water_collector");
+built_collector.ready_at = game.world_minutes;
+const water_before_collection = game.item_count("bottled water");
+game.use_furniture(built_collector);
+assert.equal(game.item_count("bottled water"), water_before_collection + 2, "production furniture creates its declared supplies when ready");
+assert.ok(built_collector.ready_at > game.world_minutes, "production furniture records its next persistent collection time");
+remove_test_furniture(built_collector);
+
+const built_medical_station = place_test_furniture("medical_station");
+game.inventory.add(api.make_item("bandage"), false);
+game.player.health = 30;
+game.use_furniture(built_medical_station);
+assert.ok(game.player.health > 46, "medical stations improve the healing supplied by a bandage");
+remove_test_furniture(built_medical_station);
+
+const built_spike_trap = place_test_furniture("spike_trap");
+const trapped_enemy = { id: "infected:test:trap", x: built_spike_trap.x - 10, y: built_spike_trap.y + built_spike_trap.h * .5, radius: 18, health: 80, dead: false, alerted: false };
+game.update_defence(built_spike_trap, api.furniture_catalog.spike_trap, [trapped_enemy], false, true);
+assert.equal(trapped_enemy.health, 44, "unpowered spike traps damage infected that reach them");
+assert.equal(trapped_enemy.alerted, true, "defensive furniture alerts surviving targets");
+remove_test_furniture(built_spike_trap);
+
+assert.doesNotThrow(() => game.draw_light_source(canvas_context, { x: game.player.x, y: game.player.y, angle: 0, light: api.furniture_catalog.spotlight.light, id: "test_light" }), "directional furniture light rendering is safe");
 for (const type of Object.keys(api.furniture_catalog).filter((candidate) => !["chest", "radio_center"].includes(candidate))) {
   const built = place_test_furniture(type);
   assert.equal(built.type, type, `${api.furniture_catalog[type].name} can be constructed through the shared placement system`);
