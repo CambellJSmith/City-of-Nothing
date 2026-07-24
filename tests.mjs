@@ -101,6 +101,56 @@ vm.runInContext(source, context, { filename: "game.js" });
 const game = context.city_of_nothing;
 const api = context.city_of_nothing_test;
 
+function point_is_walkable(layout, x, y, radius = 18) {
+  if (x < 36 + radius || y < 36 + radius || x > layout.width - 36 - radius || y > layout.height - 36 - radius) return false;
+  return !layout.walls.some((wall) => {
+    const nearest_x = Math.max(wall.x, Math.min(x, wall.x + wall.w));
+    const nearest_y = Math.max(wall.y, Math.min(y, wall.y + wall.h));
+    return (x - nearest_x) ** 2 + (y - nearest_y) ** 2 < radius ** 2;
+  });
+}
+
+function assert_interior_connected(layout, label) {
+  const step = 12;
+  const columns = Math.floor((layout.width - 108) / step) + 1;
+  const rows = Math.floor((layout.height - 108) / step) + 1;
+  const walkable = new Uint8Array(columns * rows);
+  let walkable_count = 0;
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const index = row * columns + column;
+      walkable[index] = Number(point_is_walkable(layout, 54 + column * step, 54 + row * step));
+      walkable_count += walkable[index];
+    }
+  }
+  const start = walkable.findIndex(Boolean);
+  assert.ok(start >= 0, `${label} has walkable floor space`);
+  const visited = new Uint8Array(walkable.length);
+  const queue = new Int32Array(walkable.length);
+  let queue_start = 0;
+  let queue_end = 1;
+  let visited_count = 0;
+  queue[0] = start;
+  visited[start] = 1;
+  while (queue_start < queue_end) {
+    const current = queue[queue_start++];
+    visited_count += 1;
+    const column = current % columns;
+    const row = Math.floor(current / columns);
+    const neighbors = [column > 0 ? current - 1 : -1, column < columns - 1 ? current + 1 : -1, row > 0 ? current - columns : -1, row < rows - 1 ? current + columns : -1];
+    for (const neighbor of neighbors) {
+      if (neighbor >= 0 && walkable[neighbor] && !visited[neighbor]) {
+        visited[neighbor] = 1;
+        queue[queue_end++] = neighbor;
+      }
+    }
+  }
+  assert.equal(visited_count, walkable_count, `${label} has no isolated rooms`);
+  for (const room of layout.rooms) assert.ok(point_is_walkable(layout, room.x + room.w * .5, room.y + room.h * .5), `${label} room centre is usable`);
+  for (const point of [layout.entry, layout.up, layout.down]) if (point) assert.ok(point_is_walkable(layout, point.x, point.y), `${label} transition is clear`);
+  for (const stairs of [layout.up, layout.down]) if (stairs) assert.ok(point_is_walkable(layout, stairs.x, stairs.y + 58), `${label} stair arrival is clear`);
+}
+
 assert.ok(game, "game initializes");
 assert.equal(ids.length, new Set(ids).size, "HTML ids are unique");
 assert.match(html, /<script src="game\.js"><\/script>/, "game script supports direct local launch");
@@ -173,13 +223,41 @@ assert.equal(saved.inside.building_id, building.id, "interior position persists"
 game.player.health = 2;
 game.continue();
 assert.equal(game.player.health, saved.player.health, "continue restores the saved player");
+const blocked_save = JSON.parse(JSON.stringify(saved));
+const blocking_wall = game.layout().walls[0];
+blocked_save.inside.x = blocking_wall.x + blocking_wall.w * .5;
+blocked_save.inside.y = blocking_wall.y + blocking_wall.h * .5;
+storage.set("city_of_nothing_save_v1", JSON.stringify(blocked_save));
+game.continue();
+assert.ok(point_is_walkable(game.layout(), game.player.x, game.player.y), "blocked legacy interior saves relocate the player safely");
 
 const building_types = new Set();
+const representative_buildings = new Map();
 for (let y = -12; y <= 12; y += 1) {
   for (let x = -12; x <= 12; x += 1) {
-    for (const generated of game.world.block(x, y).buildings) building_types.add(generated.type);
+    for (const generated of game.world.block(x, y).buildings) {
+      building_types.add(generated.type);
+      if (!representative_buildings.has(generated.type)) representative_buildings.set(generated.type, []);
+      if (representative_buildings.get(generated.type).length < 4) representative_buildings.get(generated.type).push(generated);
+    }
   }
 }
-assert.ok(building_types.size >= 9, "the city contains varied building types");
+assert.equal(building_types.size, 11, "the city contains every building type");
+for (const [type, buildings] of representative_buildings) {
+  for (const generated of buildings) {
+    for (let floor = -generated.basements; floor < generated.floors; floor += 1) {
+      const label = `${type} ${generated.id} floor ${floor}`;
+      const layout = game.world.interior(generated, floor);
+      assert.ok(layout.rooms.length >= 3, `${label} has purposeful rooms`);
+      assert.ok(layout.containers.length >= 5, `${label} retains useful searchable loot`);
+      assert_interior_connected(layout, label);
+      const enemies = game.enemies_inside(generated, floor);
+      for (const enemy of enemies) {
+        assert.ok(point_is_walkable(layout, enemy.x, enemy.y, enemy.radius), `${label} infected spawns in open floor space`);
+        assert.ok(layout.clearances.every((clearance) => Math.hypot(enemy.x - clearance.x, enemy.y - clearance.y) >= enemy.radius + clearance.radius + 24), `${label} infected spawns away from transitions`);
+      }
+    }
+  }
+}
 
 console.log("All City of Nothing tests passed.");

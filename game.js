@@ -492,40 +492,171 @@ class World {
     const random = rng(building.seed + floor * 8191);
     const width = ["warehouse", "factory"].includes(building.type) ? 1120 : 920;
     const height = ["hospital", "school", "civic"].includes(building.type) ? 780 : 680;
-    const layout = { key, width, height, walls: [], furniture: [], containers: [], up: floor < building.floors - 1 ? { x: width - 105, y: 95 } : null, down: floor > -building.basements ? { x: 105, y: 95 } : null, exit: floor === 0 ? { x: width * .5, y: height - 38 } : null };
-    const wall = (x, y, w, h) => layout.walls.push({ x, y, w, h });
-    const vertical = (x, opening) => { wall(x, 24, 12, Math.max(0, opening - 62)); wall(x, opening + 38, 12, Math.max(0, height - opening - 62)); };
-    const horizontal = (y, opening) => { wall(24, y, Math.max(0, opening - 62), 12); wall(opening + 38, y, Math.max(0, width - opening - 62), 12); };
-    if (["apartments", "hospital", "school", "office"].includes(building.type)) {
-      wall(24, height * .43, width * .38, 12);
-      wall(width * .48, height * .43, width * .48 - 24, 12);
-      vertical(width * .5, height * .68);
-      if (building.type !== "office") { vertical(width * .25, height * .22); vertical(width * .75, height * .22); }
-    } else if (["house", "shop", "diner"].includes(building.type)) {
-      horizontal(height * .54, width * .62);
-      vertical(width * .58, height * .28);
-    } else if (["police", "civic"].includes(building.type)) {
-      horizontal(height * .42, width * .5);
-      vertical(width * .34, height * .68);
-      vertical(width * .68, height * .2);
-    } else {
-      for (let row = 0; row < 3; row += 1) for (let column = 0; column < 4; column += 1) layout.furniture.push({ x: 150 + column * 205, y: 180 + row * 145, w: 112, h: 42, kind: "rack" });
-    }
-    const count = building.type === "warehouse" ? 8 : 5 + Math.floor(random() * 4);
-    for (let index = 0; index < count; index += 1) {
-      let x = 80 + random() * (width - 160);
-      let y = 105 + random() * (height - 200);
-      let attempts = 0;
-      while (layout.walls.some((segment) => in_rect(x, y, segment, 45)) && attempts++ < 12) { x = 80 + random() * (width - 160); y = 105 + random() * (height - 200); }
-      const kind = this.container_kind(building.type, index);
-      const container = { id: `container:${building.id}:${floor}:${index}`, x, y, w: kind === "crate" ? 48 : 38, h: kind === "crate" ? 42 : 32, kind, table: this.loot_table(building.type, kind) };
-      layout.containers.push(container);
-      layout.furniture.push(container);
-    }
-    for (let index = 0; index < 5; index += 1) layout.furniture.push({ x: 70 + random() * (width - 140), y: 100 + random() * (height - 190), w: 44 + random() * 40, h: 24 + random() * 24, kind: building.type === "hospital" ? "bed" : building.type === "office" ? "desk" : "table" });
+    const layout = {
+      key,
+      width,
+      height,
+      walls: [],
+      doors: [],
+      rooms: [],
+      clearances: [],
+      furniture: [],
+      containers: [],
+      up: floor < building.floors - 1 ? { x: width - 105, y: 95 } : null,
+      down: floor > -building.basements ? { x: 105, y: 95 } : null,
+      exit: floor === 0 ? { x: width * .5, y: height - 38 } : null,
+      entry: floor === 0 ? { x: width * .5, y: height - 90 } : null,
+    };
+    this.make_interior_floor_plan(layout, building.type, random);
+    for (const point of [layout.entry, layout.exit, layout.up, layout.down]) if (point) layout.clearances.push({ x: point.x, y: point.y, radius: point === layout.exit ? 50 : 76 });
+    for (const door of layout.doors) layout.clearances.push({ x: door.x, y: door.y, radius: 48 });
+    this.populate_interior(layout, building, floor, random);
     this.interiors.set(key, layout);
     if (this.interiors.size > 120) this.interiors.delete(this.interiors.keys().next().value);
     return layout;
+  }
+
+  add_partition(layout, orientation, position, start, end, openings, opening_width = 88) {
+    const thickness = 12;
+    const half_opening = opening_width * .5;
+    const gaps = openings.map((opening) => ({ start: clamp(opening - half_opening, start, end), end: clamp(opening + half_opening, start, end), center: opening })).sort((first, second) => first.start - second.start);
+    let cursor = start;
+    for (const gap of gaps) {
+      if (gap.start > cursor) {
+        if (orientation === "horizontal") layout.walls.push({ x: cursor, y: position, w: gap.start - cursor, h: thickness });
+        else layout.walls.push({ x: position, y: cursor, w: thickness, h: gap.start - cursor });
+      }
+      cursor = Math.max(cursor, gap.end);
+      layout.doors.push(orientation === "horizontal" ? { x: gap.center, y: position, orientation, width: opening_width } : { x: position, y: gap.center, orientation, width: opening_width });
+    }
+    if (cursor < end) {
+      if (orientation === "horizontal") layout.walls.push({ x: cursor, y: position, w: end - cursor, h: thickness });
+      else layout.walls.push({ x: position, y: cursor, w: thickness, h: end - cursor });
+    }
+  }
+
+  make_interior_floor_plan(layout, type, random) {
+    if (["warehouse", "factory"].includes(type)) return this.make_industrial_floor_plan(layout);
+    if (["house", "shop", "diner"].includes(type)) return this.make_front_room_floor_plan(layout, type);
+    this.make_corridor_floor_plan(layout, type, random);
+  }
+
+  make_corridor_floor_plan(layout, type, random) {
+    const top = 28;
+    const bottom = layout.height - 28;
+    const hall_left = layout.width * .5 - 62;
+    const hall_right = layout.width * .5 + 62;
+    const bands = ["hospital", "school", "civic", "apartments"].includes(type) ? 3 : 2;
+    const band_height = (bottom - top) / bands;
+    const left_doors = [];
+    const right_doors = [];
+    for (let index = 0; index < bands; index += 1) {
+      const band_top = top + band_height * index;
+      const band_bottom = top + band_height * (index + 1);
+      const variation = Math.min(28, band_height * .12);
+      const left_door_y = (band_top + band_bottom) * .5 + (random() - .5) * variation;
+      const right_door_y = (band_top + band_bottom) * .5 + (random() - .5) * variation;
+      left_doors.push(left_door_y);
+      right_doors.push(right_door_y);
+      layout.rooms.push({ x: top, y: band_top, w: hall_left - top, h: band_height, door_x: hall_left, door_y: left_door_y, kind: `${type} room` });
+      layout.rooms.push({ x: hall_right + 12, y: band_top, w: layout.width - top - hall_right - 12, h: band_height, door_x: hall_right, door_y: right_door_y, kind: `${type} room` });
+      if (index === 0) continue;
+      const divider_y = band_top;
+      layout.walls.push({ x: top, y: divider_y, w: hall_left - top, h: 12 });
+      layout.walls.push({ x: hall_right, y: divider_y, w: layout.width - top - hall_right, h: 12 });
+    }
+    this.add_partition(layout, "vertical", hall_left, top, bottom, left_doors);
+    this.add_partition(layout, "vertical", hall_right, top, bottom, right_doors);
+  }
+
+  make_front_room_floor_plan(layout, type) {
+    const edge = 28;
+    const center = layout.width * .5;
+    const back_wall_y = layout.height * .4;
+    const left_door_x = layout.width * .28;
+    const right_door_x = layout.width * .72;
+    this.add_partition(layout, "horizontal", back_wall_y, edge, layout.width - edge, [left_door_x, right_door_x]);
+    this.add_partition(layout, "vertical", center, edge, back_wall_y, [back_wall_y * .53], 80);
+    layout.rooms.push({ x: edge, y: edge, w: center - edge, h: back_wall_y - edge, door_x: left_door_x, door_y: back_wall_y, kind: type === "house" ? "bedroom" : "stock room" });
+    layout.rooms.push({ x: center + 12, y: edge, w: layout.width - center - edge - 12, h: back_wall_y - edge, door_x: right_door_x, door_y: back_wall_y, kind: type === "diner" ? "kitchen" : "back room" });
+    layout.rooms.push({ x: edge, y: back_wall_y + 12, w: layout.width - edge * 2, h: layout.height - back_wall_y - edge - 12, door_x: layout.width * .5, door_y: layout.height - 90, kind: type === "house" ? "living room" : type === "diner" ? "dining room" : "shop floor" });
+  }
+
+  make_industrial_floor_plan(layout) {
+    const edge = 28;
+    const office_left = layout.width - 310;
+    const office_bottom = 248;
+    this.add_partition(layout, "vertical", office_left, edge, office_bottom, [148], 84);
+    this.add_partition(layout, "horizontal", office_bottom, office_left, layout.width - edge, [layout.width - 148], 84);
+    layout.rooms.push({ x: edge, y: edge, w: office_left - edge, h: office_bottom - edge, door_x: office_left, door_y: 148, kind: "workshop" });
+    layout.rooms.push({ x: office_left + 12, y: edge, w: layout.width - office_left - edge - 12, h: office_bottom - edge, door_x: layout.width - 148, door_y: office_bottom, kind: "office" });
+    layout.rooms.push({ x: edge, y: office_bottom + 12, w: layout.width - edge * 2, h: layout.height - office_bottom - edge - 12, door_x: layout.width * .5, door_y: layout.height - 90, kind: "warehouse floor" });
+  }
+
+  populate_interior(layout, building, floor, random) {
+    const count = building.type === "warehouse" ? 8 : 5 + Math.floor(random() * 4);
+    for (let index = 0; index < count; index += 1) {
+      const kind = this.container_kind(building.type, index);
+      const width = kind === "crate" ? 48 : 38;
+      const height = kind === "crate" ? 42 : 32;
+      const position = this.place_interior_fixture(layout, width, height, random);
+      if (!position) continue;
+      const container = { id: `container:${building.id}:${floor}:${index}`, x: position.x, y: position.y, w: width, h: height, kind, table: this.loot_table(building.type, kind) };
+      layout.containers.push(container);
+      layout.furniture.push(container);
+    }
+    if (["warehouse", "factory"].includes(building.type)) {
+      for (let row = 0; row < 2; row += 1) {
+        for (let column = 0; column < 4; column += 1) {
+          const rack = { x: 105 + column * 170, y: 320 + row * 150, w: 112, h: 42, kind: "rack" };
+          if (this.interior_fixture_fits(layout, rack)) layout.furniture.push(rack);
+        }
+      }
+    }
+    const furniture_count = ["hospital", "school", "apartments"].includes(building.type) ? 8 : 5;
+    for (let index = 0; index < furniture_count; index += 1) {
+      const width = 44 + random() * 40;
+      const height = 24 + random() * 24;
+      const position = this.place_interior_fixture(layout, width, height, random);
+      if (!position) continue;
+      layout.furniture.push({ x: position.x, y: position.y, w: width, h: height, kind: building.type === "hospital" ? "bed" : building.type === "office" ? "desk" : "table" });
+    }
+  }
+
+  place_interior_fixture(layout, width, height, random) {
+    const rooms = layout.rooms.filter((room) => room.w > width + 70 && room.h > height + 70);
+    for (let attempt = 0; attempt < 80 && rooms.length; attempt += 1) {
+      const room = rooms[Math.floor(random() * rooms.length)];
+      const x = room.x + 35 + random() * (room.w - width - 70);
+      const y = room.y + 35 + random() * (room.h - height - 70);
+      const fixture = { x, y, w: width, h: height };
+      if (this.interior_fixture_fits(layout, fixture)) return fixture;
+    }
+    return null;
+  }
+
+  interior_fixture_fits(layout, fixture) {
+    if (fixture.x < 36 || fixture.y < 36 || fixture.x + fixture.w > layout.width - 36 || fixture.y + fixture.h > layout.height - 36) return false;
+    if (layout.walls.some((wall) => fixture.x < wall.x + wall.w + 14 && fixture.x + fixture.w + 14 > wall.x && fixture.y < wall.y + wall.h + 14 && fixture.y + fixture.h + 14 > wall.y)) return false;
+    if (layout.clearances.some((clearance) => circle_rect(clearance.x, clearance.y, clearance.radius, fixture))) return false;
+    return !layout.furniture.some((item) => fixture.x < item.x + item.w + 12 && fixture.x + fixture.w + 12 > item.x && fixture.y < item.y + item.h + 12 && fixture.y + fixture.h + 12 > item.y);
+  }
+
+  interior_point_open(layout, x, y, radius, avoid_clearances = false) {
+    if (x < 36 + radius || y < 36 + radius || x > layout.width - 36 - radius || y > layout.height - 36 - radius) return false;
+    if (layout.walls.some((wall) => circle_rect(x, y, radius, wall))) return false;
+    if (avoid_clearances && layout.clearances.some((clearance) => distance_sq(x, y, clearance.x, clearance.y) < (radius + clearance.radius + 24) ** 2)) return false;
+    return true;
+  }
+
+  random_interior_point(layout, random, radius, avoid_clearances = false) {
+    for (let attempt = 0; attempt < 80; attempt += 1) {
+      const room = layout.rooms[Math.floor(random() * layout.rooms.length)];
+      const x = room.x + radius + 24 + random() * Math.max(1, room.w - radius * 2 - 48);
+      const y = room.y + radius + 24 + random() * Math.max(1, room.h - radius * 2 - 48);
+      if (this.interior_point_open(layout, x, y, radius, avoid_clearances)) return { x, y };
+    }
+    return null;
   }
 
   container_kind(type, index) {
@@ -739,6 +870,12 @@ class Game {
         this.inside = { building, floor: data.inside.floor ?? 0 };
         this.player.x = data.inside.x ?? 460;
         this.player.y = data.inside.y ?? 600;
+        const layout = this.layout();
+        if (!this.world.interior_point_open(layout, this.player.x, this.player.y, PLAYER_RADIUS)) {
+          const safe_point = layout.entry ?? layout.down ?? layout.up ?? { x: layout.width * .5, y: layout.height - 90 };
+          this.player.x = safe_point.x;
+          this.player.y = safe_point.y;
+        }
       }
     }
     this.camera = { x: this.player.x, y: this.player.y, zoom: 1 };
@@ -941,11 +1078,12 @@ class Game {
     for (let index = 0; index < count; index += 1) {
       const id = `infected:in:${building.id}:${floor}:${index}`;
       if (this.killed.has(id)) continue;
-      let x = 90 + random() * (layout.width - 180);
-      let y = 120 + random() * (layout.height - 220);
-      let attempts = 0;
-      while (layout.walls.some((wall) => in_rect(x, y, wall, 30)) && attempts++ < 12) { x = 90 + random() * (layout.width - 180); y = 120 + random() * (layout.height - 220); }
-      enemies.push(this.enemy(id, x, y, random));
+      const enemy = this.enemy(id, 0, 0, random);
+      const position = this.world.random_interior_point(layout, random, enemy.radius + 4, true);
+      if (!position) continue;
+      enemy.x = position.x;
+      enemy.y = position.y;
+      enemies.push(enemy);
     }
     this.indoor_enemies.set(key, enemies);
     return enemies;
@@ -1130,8 +1268,8 @@ class Game {
   enter(building) {
     this.inside = { building, floor: 0 };
     const layout = this.layout();
-    this.player.x = layout.width * .5;
-    this.player.y = layout.height - 90;
+    this.player.x = layout.entry.x;
+    this.player.y = layout.entry.y;
     this.camera.x = this.player.x;
     this.camera.y = this.player.y;
     this.toast(`entered ${building.name}`);
