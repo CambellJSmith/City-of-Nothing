@@ -41,6 +41,7 @@ class FakeElement {
     this.disabled = false;
     this.width = id === "minimap_canvas" ? 220 : 1280;
     this.height = id === "minimap_canvas" ? 220 : 720;
+    this.context = null;
   }
 
   set innerHTML(value) {
@@ -74,20 +75,32 @@ class FakeElement {
   }
   querySelector() { return new FakeElement(); }
   getBoundingClientRect() { return { left: 0, top: 0, width: 1280, height: 720 }; }
-  getContext() { return canvas_context; }
+  getContext() { return this.context ?? canvas_context; }
 }
 
-const canvas_context = new Proxy({}, {
-  get(target, property) {
-    if (!(property in target)) target[property] = () => {};
-    return target[property];
-  },
-  set(target, property, value) {
-    target[property] = value;
-    return true;
-  },
-});
-canvas_context.createRadialGradient = () => ({ addColorStop() {} });
+function make_canvas_context() {
+  const target = { composite_operations: [], draw_image_calls: 0 };
+  const context = new Proxy(target, {
+    get(canvas_target, property) {
+      if (!(property in canvas_target)) {
+        canvas_target[property] = () => {
+          if (property === "drawImage") canvas_target.draw_image_calls += 1;
+        };
+      }
+      return canvas_target[property];
+    },
+    set(canvas_target, property, value) {
+      if (property === "globalCompositeOperation") canvas_target.composite_operations.push(value);
+      canvas_target[property] = value;
+      return true;
+    },
+  });
+  context.createRadialGradient = () => ({ addColorStop() {} });
+  return context;
+}
+
+const canvas_context = make_canvas_context();
+const light_canvas_context = make_canvas_context();
 
 const elements = new Map(ids.map((id) => [id, new FakeElement(id)]));
 const storage = new Map();
@@ -98,7 +111,11 @@ const document = {
     return [];
   },
   addEventListener() {},
-  createElement() { return new FakeElement(); },
+  createElement(tag_name) {
+    const element = new FakeElement();
+    if (tag_name === "canvas") element.context = light_canvas_context;
+    return element;
+  },
 };
 
 const context = vm.createContext({
@@ -774,7 +791,17 @@ assert.equal(trapped_enemy.health, 44, "unpowered spike traps damage infected th
 assert.equal(trapped_enemy.alerted, true, "defensive furniture alerts surviving targets");
 remove_test_furniture(built_spike_trap);
 
-assert.doesNotThrow(() => game.draw_light_source(canvas_context, { x: game.player.x, y: game.player.y, angle: 0, light: api.furniture_catalog.spotlight.light, id: "test_light" }), "directional furniture light rendering is safe");
+assert.doesNotThrow(() => game.draw_light_source(light_canvas_context, { x: game.player.x, y: game.player.y, angle: 0, light: api.furniture_catalog.spotlight.light, id: "test_light" }), "directional furniture light rendering is safe");
+const lighting_flashlight = api.make_item("flashlight");
+game.inventory.add(lighting_flashlight, false);
+canvas_context.composite_operations.length = 0;
+canvas_context.draw_image_calls = 0;
+light_canvas_context.composite_operations.length = 0;
+game.draw_light(canvas_context);
+assert.equal(canvas_context.composite_operations.includes("destination-out"), false, "light sources never erase pixels from the opaque world canvas");
+assert.ok(light_canvas_context.composite_operations.includes("destination-out"), "light sources remove darkness only from the transparent lighting buffer");
+assert.equal(canvas_context.draw_image_calls, 1, "the completed lighting overlay is composited over the untouched world once per frame");
+game.inventory.remove(lighting_flashlight.id);
 for (const type of Object.keys(api.furniture_catalog).filter((candidate) => !["chest", "radio_center"].includes(candidate))) {
   const built = place_test_furniture(type);
   assert.equal(built.type, type, `${api.furniture_catalog[type].name} can be constructed through the shared placement system`);
