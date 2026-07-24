@@ -37,6 +37,15 @@ const building_names = {
   diner: ["last light diner", "mabel's kitchen", "grey spoon", "night shift café"],
 };
 
+const exterior_roof_patterns = [
+  [{ x: .12, y: .14, w: .18, h: .13 }, { x: .64, y: .58, w: .2, h: .14 }],
+  [{ x: .16, y: .2, w: .24, h: .11 }, { x: .58, y: .63, w: .16, h: .18 }],
+  [{ x: .1, y: .56, w: .22, h: .16 }, { x: .61, y: .17, w: .25, h: .1 }],
+  [{ x: .18, y: .12, w: .14, h: .22 }, { x: .5, y: .58, w: .3, h: .12 }],
+  [{ x: .09, y: .24, w: .28, h: .12 }, { x: .67, y: .51, w: .13, h: .24 }],
+  [{ x: .2, y: .62, w: .2, h: .13 }, { x: .55, y: .16, w: .27, h: .15 }],
+];
+
 const interior_room_kinds = {
   house: ["living room", "kitchen", "bedroom", "bathroom", "study", "utility room"],
   apartments: ["apartment", "kitchen", "bedroom", "lounge", "laundry", "storage room"],
@@ -539,15 +548,72 @@ class World {
       if (random() < (district === "outskirts" ? .2 : .08)) return;
       const type = types[Math.floor(random() * types.length)];
       const names = building_names[type] ?? building_names.office;
-      const x = origin_x + lot.x * area;
-      const y = origin_y + lot.y * area;
-      const w = lot.w * area;
-      const h = lot.h * area;
+      const lot_bounds = { x: origin_x + lot.x * area, y: origin_y + lot.y * area, w: lot.w * area, h: lot.h * area };
+      const horizontal_side = lot_bounds.x + lot_bounds.w * .5 < block_x * CELL + CELL * .5 ? "west" : "east";
+      const vertical_side = lot_bounds.y + lot_bounds.h * .5 < block_y * CELL + CELL * .5 ? "north" : "south";
+      const preferred_side = hash(this.seed, block_x * 97 + index, block_y * 53, 19) < .5 ? horizontal_side : vertical_side;
+      const { x, y, w, h } = this.oriented_building_footprint(lot_bounds, preferred_side, block_x, block_y, index);
       const floors = type === "office" ? 3 + Math.floor(random() * 5) : type === "apartments" ? 2 + Math.floor(random() * 4) : ["hospital", "civic", "school"].includes(type) ? 2 + Math.floor(random() * 3) : 1 + Math.floor(random() * 2);
       const basements = ["house", "shop", "hospital", "police", "civic"].includes(type) && random() < .65 ? 1 : 0;
-      buildings.push({ id: `building:${block_x}:${block_y}:${index}`, block_x, block_y, index, x, y, w, h, door_x: x + w * (.3 + random() * .4), door_y: y + h + 4, district, type, name: names[Math.floor(random() * names.length)], floors, basements, seed: Math.floor(random() * 2147483647) });
+      const door_ratio = .3 + random() * .4;
+      const building = { id: `building:${block_x}:${block_y}:${index}`, block_x, block_y, index, x, y, w, h, district, type, name: names[Math.floor(random() * names.length)], floors, basements, seed: Math.floor(random() * 2147483647) };
+      building.road_side = this.closest_road_side(building);
+      building.quarter_turns = { south: 0, west: 1, north: 2, east: 3 }[building.road_side];
+      building.exterior_variant = Math.floor(hash(building.seed, index, 37) * exterior_roof_patterns.length);
+      Object.assign(building, this.building_door(building, door_ratio));
+      buildings.push(building);
     });
     return buildings;
+  }
+
+  oriented_building_footprint(lot, road_side, block_x, block_y, index) {
+    const block_left = block_x * CELL + ROAD * .5;
+    const block_top = block_y * CELL + ROAD * .5;
+    const block_right = (block_x + 1) * CELL - ROAD * .5;
+    const block_bottom = (block_y + 1) * CELL - ROAD * .5;
+    const edge_inset = 3 + hash(this.seed, block_x, block_y, index + 71) * 9;
+    const end_inset = 10 + hash(this.seed, block_x, block_y, index + 83) * 20;
+    let left = lot.x + end_inset;
+    let top = lot.y + end_inset;
+    let right = lot.x + lot.w - end_inset;
+    let bottom = lot.y + lot.h - end_inset;
+    if (road_side === "north" || road_side === "south") {
+      if (road_side === "north") top = lot.y + edge_inset;
+      else bottom = lot.y + lot.h - edge_inset;
+      const road_distance = road_side === "north" ? top - block_top : block_bottom - bottom;
+      left = Math.max(left, block_left + road_distance + 12);
+      right = Math.min(right, block_right - road_distance - 12);
+    } else {
+      if (road_side === "west") left = lot.x + edge_inset;
+      else right = lot.x + lot.w - edge_inset;
+      const road_distance = road_side === "west" ? left - block_left : block_right - right;
+      top = Math.max(top, block_top + road_distance + 12);
+      bottom = Math.min(bottom, block_bottom - road_distance - 12);
+    }
+    return { x: left, y: top, w: right - left, h: bottom - top };
+  }
+
+  closest_road_side(building) {
+    const block_left = building.block_x * CELL + ROAD * .5;
+    const block_top = building.block_y * CELL + ROAD * .5;
+    const block_right = (building.block_x + 1) * CELL - ROAD * .5;
+    const block_bottom = (building.block_y + 1) * CELL - ROAD * .5;
+    const distances = {
+      north: building.y - block_top,
+      east: block_right - building.x - building.w,
+      south: block_bottom - building.y - building.h,
+      west: building.x - block_left,
+    };
+    const nearest = Math.min(...Object.values(distances));
+    const candidates = Object.keys(distances).filter((side) => Math.abs(distances[side] - nearest) < .001);
+    return candidates[Math.floor(hash(building.seed, building.block_x, building.block_y, building.index) * candidates.length)];
+  }
+
+  building_door(building, ratio) {
+    if (building.road_side === "north") return { door_x: building.x + building.w * ratio, door_y: building.y - 4 };
+    if (building.road_side === "east") return { door_x: building.x + building.w + 4, door_y: building.y + building.h * ratio };
+    if (building.road_side === "west") return { door_x: building.x - 4, door_y: building.y + building.h * ratio };
+    return { door_x: building.x + building.w * ratio, door_y: building.y + building.h + 4 };
   }
 
   make_trees(block_x, block_y, district) {
@@ -586,18 +652,47 @@ class World {
       clearances: [],
       furniture: [],
       containers: [],
-      up: floor < building.floors - 1 ? { x: width - 105, y: 95 } : null,
-      down: floor > -building.basements ? { x: 105, y: 95 } : null,
+      up: floor < building.floors - 1 ? { x: width - 105, y: 95, quarter_turns: 0 } : null,
+      up_arrival: floor < building.floors - 1 ? { x: width - 105, y: 153 } : null,
+      down: floor > -building.basements ? { x: 105, y: 95, quarter_turns: 0 } : null,
+      down_arrival: floor > -building.basements ? { x: 105, y: 153 } : null,
       exit: floor === 0 ? { x: width * .5, y: height - 38 } : null,
       entry: floor === 0 ? { x: width * .5, y: height - 90 } : null,
     };
     this.make_interior_floor_plan(layout, building.type, template, random);
+    this.rotate_interior_layout(layout, building.quarter_turns);
     for (const point of [layout.entry, layout.exit, layout.up, layout.down]) if (point) layout.clearances.push({ x: point.x, y: point.y, radius: point === layout.exit ? 50 : 76 });
     for (const door of layout.doors) layout.clearances.push({ x: door.x, y: door.y, radius: Math.max(60, door.width * .5) });
     this.populate_interior(layout, building, floor, random);
     this.interiors.set(key, layout);
     if (this.interiors.size > 120) this.interiors.delete(this.interiors.keys().next().value);
     return layout;
+  }
+
+  rotate_interior_layout(layout, quarter_turns) {
+    for (let turn = 0; turn < quarter_turns; turn += 1) {
+      const width = layout.width;
+      const height = layout.height;
+      const clean = (value) => Math.round(value * 1000000) / 1000000;
+      const rotate_point = (point) => point ? { ...point, x: clean(height - point.y), y: clean(point.x) } : null;
+      const rotate_rect = (rect) => ({ ...rect, x: clean(height - rect.y - rect.h), y: clean(rect.x), w: clean(rect.h), h: clean(rect.w) });
+      layout.walls = layout.walls.map(rotate_rect);
+      layout.passages = layout.passages.map(rotate_rect);
+      layout.rooms = layout.rooms.map((room) => {
+        const door = rotate_point({ x: room.door_x, y: room.door_y });
+        return { ...rotate_rect(room), door_x: door.x, door_y: door.y };
+      });
+      layout.doors = layout.doors.map((door) => ({ ...rotate_point(door), orientation: door.orientation === "horizontal" ? "vertical" : "horizontal", width: door.width }));
+      layout.entry = rotate_point(layout.entry);
+      layout.exit = rotate_point(layout.exit);
+      layout.up = layout.up ? { ...rotate_point(layout.up), quarter_turns: (layout.up.quarter_turns + 1) % 4 } : null;
+      layout.up_arrival = rotate_point(layout.up_arrival);
+      layout.down = layout.down ? { ...rotate_point(layout.down), quarter_turns: (layout.down.quarter_turns + 1) % 4 } : null;
+      layout.down_arrival = rotate_point(layout.down_arrival);
+      layout.width = height;
+      layout.height = width;
+    }
+    if (quarter_turns) layout.passages = layout.passages.map((passage) => ({ ...passage, x: passage.x + .01, y: passage.y + .01, w: passage.w - .02, h: passage.h - .02 }));
   }
 
   interior_template(type, random) {
@@ -1568,8 +1663,14 @@ class Game {
   exit() {
     const building = this.inside.building;
     this.inside = null;
-    this.player.x = building.door_x;
-    this.player.y = building.door_y + 48;
+    const direction = {
+      north: { x: 0, y: -1 },
+      east: { x: 1, y: 0 },
+      south: { x: 0, y: 1 },
+      west: { x: -1, y: 0 },
+    }[building.road_side];
+    this.player.x = building.door_x + direction.x * 48;
+    this.player.y = building.door_y + direction.y * 48;
     this.camera.x = this.player.x;
     this.camera.y = this.player.y;
     this.toast("returned to street level");
@@ -1583,9 +1684,9 @@ class Game {
     if (floor < -building.basements || floor >= building.floors) return;
     this.inside.floor = floor;
     const layout = this.layout();
-    const arrival = direction > 0 ? layout.down : layout.up;
+    const arrival = direction > 0 ? layout.down_arrival : layout.up_arrival;
     this.player.x = arrival?.x ?? layout.width * .5;
-    this.player.y = (arrival?.y ?? 110) + 58;
+    this.player.y = arrival?.y ?? layout.height * .5;
     this.camera.x = this.player.x;
     this.camera.y = this.player.y;
     this.toast(this.floor_label(floor));
@@ -1806,14 +1907,18 @@ class Game {
     context.strokeStyle = "rgba(225,225,207,.22)";
     context.lineWidth = 3;
     context.strokeRect(building.x + 1.5, building.y + 1.5, building.w - 3, building.h - 3);
-    const unit = Math.min(building.w, building.h);
     context.fillStyle = "rgba(30,35,33,.52)";
-    context.fillRect(building.x + building.w * .12, building.y + building.h * .14, unit * .18, unit * .13);
-    context.fillRect(building.x + building.w * .64, building.y + building.h * .58, unit * .2, unit * .14);
+    const roof_pattern = exterior_roof_patterns[building.exterior_variant];
+    for (const fixture of roof_pattern) {
+      const oriented = this.oriented_exterior_rect(building, fixture);
+      context.fillRect(oriented.x, oriented.y, oriented.w, oriented.h);
+    }
     context.fillStyle = district.accent;
-    context.fillRect(building.door_x - 18, building.door_y - 10, 36, 18);
+    if (building.road_side === "north" || building.road_side === "south") context.fillRect(building.door_x - 18, building.door_y - 9, 36, 18);
+    else context.fillRect(building.door_x - 9, building.door_y - 18, 18, 36);
     context.fillStyle = "#1d2421";
-    context.fillRect(building.door_x - 10, building.door_y - 6, 20, 14);
+    if (building.road_side === "north" || building.road_side === "south") context.fillRect(building.door_x - 10, building.door_y - 7, 20, 14);
+    else context.fillRect(building.door_x - 7, building.door_y - 10, 14, 20);
     context.textAlign = "center";
     context.textBaseline = "middle";
     context.font = "11px Courier New, monospace";
@@ -1822,6 +1927,33 @@ class Game {
     context.font = "9px Courier New, monospace";
     context.fillStyle = "rgba(239,237,222,.38)";
     context.fillText(`${building.floors} FLOOR${building.floors === 1 ? "" : "S"}`, building.x + building.w * .5, building.y + building.h * .5 + 16);
+  }
+
+  oriented_exterior_rect(building, fixture) {
+    if (building.road_side === "west") return {
+      x: building.x + (1 - fixture.y - fixture.h) * building.w,
+      y: building.y + fixture.x * building.h,
+      w: fixture.h * building.w,
+      h: fixture.w * building.h,
+    };
+    if (building.road_side === "north") return {
+      x: building.x + (1 - fixture.x - fixture.w) * building.w,
+      y: building.y + (1 - fixture.y - fixture.h) * building.h,
+      w: fixture.w * building.w,
+      h: fixture.h * building.h,
+    };
+    if (building.road_side === "east") return {
+      x: building.x + fixture.y * building.w,
+      y: building.y + (1 - fixture.x - fixture.w) * building.h,
+      w: fixture.h * building.w,
+      h: fixture.w * building.h,
+    };
+    return {
+      x: building.x + fixture.x * building.w,
+      y: building.y + fixture.y * building.h,
+      w: fixture.w * building.w,
+      h: fixture.h * building.h,
+    };
   }
 
   draw_interior(context) {
@@ -1863,25 +1995,39 @@ class Game {
     this.draw_stairs(context, layout.down, "DN");
     if (layout.exit) {
       context.fillStyle = "#adbc7b";
-      context.fillRect(layout.exit.x - 30, layout.height - 34, 60, 12);
+      if (building.road_side === "north") context.fillRect(layout.exit.x - 30, 22, 60, 12);
+      else if (building.road_side === "east") context.fillRect(layout.width - 34, layout.exit.y - 30, 12, 60);
+      else if (building.road_side === "west") context.fillRect(22, layout.exit.y - 30, 12, 60);
+      else context.fillRect(layout.exit.x - 30, layout.height - 34, 60, 12);
       context.font = "9px Courier New, monospace";
       context.textAlign = "center";
       context.fillStyle = "rgba(230,234,207,.75)";
-      context.fillText("EXIT", layout.exit.x, layout.height - 45);
+      const exit_label = {
+        north: { x: layout.exit.x, y: 45 },
+        east: { x: layout.width - 48, y: layout.exit.y },
+        south: { x: layout.exit.x, y: layout.height - 45 },
+        west: { x: 48, y: layout.exit.y },
+      }[building.road_side];
+      context.fillText("EXIT", exit_label.x, exit_label.y);
     }
-    context.font = "13px Courier New, monospace";
+    context.font = "11px Courier New, monospace";
     context.textAlign = "left";
+    context.textBaseline = "middle";
     context.fillStyle = "rgba(230,234,207,.44)";
-    context.fillText(`${building.name.toUpperCase()} · ${this.floor_label(this.inside.floor).toUpperCase()}`, 42, 53);
+    context.fillText(`${building.name.toUpperCase()} · ${this.floor_label(this.inside.floor).toUpperCase()}`, 10, 14);
   }
 
   draw_stairs(context, stairs, label) {
     if (!stairs) return;
+    context.save();
+    context.translate(stairs.x, stairs.y);
+    context.rotate(stairs.quarter_turns * Math.PI * .5);
     context.fillStyle = "#3b423e";
-    context.fillRect(stairs.x - 38, stairs.y - 32, 76, 64);
+    context.fillRect(-38, -32, 76, 64);
     context.strokeStyle = "rgba(207,222,147,.48)";
     context.lineWidth = 2;
-    for (let index = -24; index <= 24; index += 12) { context.beginPath(); context.moveTo(stairs.x - 28, stairs.y + index); context.lineTo(stairs.x + 28, stairs.y + index); context.stroke(); }
+    for (let index = -24; index <= 24; index += 12) { context.beginPath(); context.moveTo(-28, index); context.lineTo(28, index); context.stroke(); }
+    context.restore();
     context.font = "9px Courier New, monospace";
     context.textAlign = "center";
     context.fillStyle = "#cfde93";
@@ -2085,4 +2231,4 @@ class Game {
 
 const game = new Game();
 globalThis.city_of_nothing = game;
-globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, interior_template_catalog, interior_template_families };
+globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, interior_template_catalog, interior_template_families, exterior_roof_patterns, city_geometry: { cell: CELL, road: ROAD } };

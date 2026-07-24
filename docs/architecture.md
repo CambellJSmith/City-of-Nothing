@@ -58,7 +58,7 @@ The world uses a fixed numeric seed and stable hashes derived from grid coordina
 - The playable city is bounded by `CITY_RADIUS`.
 - Each block is `CELL` world units square with a road corridor through its edges.
 - District assignment uses distance from the center, coordinate regions, and deterministic noise.
-- Building types, names, dimensions, doors, floor counts, basements, and seeds are reproduced from block coordinates.
+- Building types, names, road-facing footprints, doors, floor counts, basements, and seeds are reproduced from block coordinates.
 - Interior geometry, template selection, room roles, dimensions, furniture, container positions, and loot contexts are reproduced from building seed and floor.
 - Outdoor and indoor infected IDs are derived from block, building, floor, and index.
 - Container loot is generated from the container ID.
@@ -78,6 +78,8 @@ The interior catalog contains 371 base templates across five structural families
 Each building type selects from a compatible family pool containing at least 240 base templates. Building seed and floor then select the template, dimensions, door offsets, room-role rotation, furniture counts, fixture types, and placement. This gives separate floors and nearby buildings visibly different geometry while remaining deterministic.
 
 Every family is constructed around an uninterrupted primary route. Door openings create full passage rectangles, and entrance routes remain reserved through the complete approach rather than only at the transition point.
+
+Exterior footprints are inset within their lots and oriented toward the nearest block-edge road. The exterior door, roof fixtures, complete interior geometry, entry and exit, stairs, and stair arrivals share the resulting north, east, south, or west rotation. This keeps the visible façade, interaction point, and interior transition consistent.
 
 ### stable identity
 

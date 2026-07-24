@@ -9,6 +9,7 @@ The entire game is plain HTML, CSS, and JavaScript. There is no build step, pack
 - A deterministic 128 × 128 city made from 16,384 streamed blocks
 - Seven districts with different building mixes and infected density
 - Enterable houses, apartments, shops, offices, hospitals, civic buildings, factories, warehouses, schools, diners, and police stations
+- Varied four-way building exteriors with entrances and interiors rotated toward the closest road
 - Procedural multi-floor interiors selected from 371 connected base templates, including upper floors and basements
 - Melee weapons, firearms, armor, food, medicine, ammunition, tools, and materials
 - Walker, runner, and brute infected variants
