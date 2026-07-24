@@ -110,6 +110,20 @@ function point_is_walkable(layout, x, y, radius = 18) {
   });
 }
 
+function assert_passage_clear(layout, passage, label) {
+  const radius = 18;
+  const step = 12;
+  for (let y = passage.y + radius; y <= passage.y + passage.h - radius; y += step) {
+    for (let x = passage.x + radius; x <= passage.x + passage.w - radius; x += step) {
+      assert.ok(point_is_walkable(layout, x, y, radius), `${label} ${passage.kind} passage is clear at ${Math.round(x)},${Math.round(y)}`);
+    }
+  }
+  for (const fixture of layout.furniture) {
+    const overlaps = fixture.x < passage.x + passage.w && fixture.x + fixture.w > passage.x && fixture.y < passage.y + passage.h && fixture.y + fixture.h > passage.y;
+    assert.equal(overlaps, false, `${label} ${passage.kind} passage has no furniture`);
+  }
+}
+
 function assert_interior_connected(layout, label) {
   const step = 12;
   const columns = Math.floor((layout.width - 108) / step) + 1;
@@ -149,6 +163,9 @@ function assert_interior_connected(layout, label) {
   for (const room of layout.rooms) assert.ok(point_is_walkable(layout, room.x + room.w * .5, room.y + room.h * .5), `${label} room centre is usable`);
   for (const point of [layout.entry, layout.up, layout.down]) if (point) assert.ok(point_is_walkable(layout, point.x, point.y), `${label} transition is clear`);
   for (const stairs of [layout.up, layout.down]) if (stairs) assert.ok(point_is_walkable(layout, stairs.x, stairs.y + 58), `${label} stair arrival is clear`);
+  for (const door of layout.doors) assert.ok(door.width >= 120, `${label} doorway is comfortably wide`);
+  for (const passage of layout.passages) assert_passage_clear(layout, passage, label);
+  if (layout.entry) assert.ok(layout.passages.some((passage) => passage.kind === "entry"), `${label} has a protected entry route`);
 }
 
 assert.ok(game, "game initializes");
@@ -238,7 +255,7 @@ for (let y = -12; y <= 12; y += 1) {
     for (const generated of game.world.block(x, y).buildings) {
       building_types.add(generated.type);
       if (!representative_buildings.has(generated.type)) representative_buildings.set(generated.type, []);
-      if (representative_buildings.get(generated.type).length < 4) representative_buildings.get(generated.type).push(generated);
+      if (representative_buildings.get(generated.type).length < 12) representative_buildings.get(generated.type).push(generated);
     }
   }
 }
