@@ -31,7 +31,7 @@ The top of `game.js` contains the data-driven content:
 - `survivor_names` and `survivor_lines` provide deterministic human identities and conversation text.
 - `group_orders` defines the player-facing shout, HUD state, and description for each tactical order.
 - `radio_missions` and `engagement_rules` define individual remote assignments and combat eagerness.
-- `furniture_catalog` defines construction size, cost, storage, power, and interaction behavior.
+- `furniture_catalog` defines each of 58 constructions through category, size, cost, placement, color, storage, rest, production, power, defence, light, toggle, and interaction fields.
 - `workbench_recipes` declares every finite recipe and its exact inputs and output.
 - `building_names` supplies names for each building type.
 - `item_catalog` defines category, equipment slot, ammunition type, numeric statistics, tags, and description.
@@ -123,13 +123,17 @@ Generated data is held in insertion-ordered maps and evicted from the oldest end
 
 The renderer only visits blocks intersecting the camera bounds. Active outdoor infected are limited to the player's surrounding 3 × 3 block neighborhood.
 
-Interior cache eviction skips keys in `World.pinned_interiors`. Placing a radio center pins every floor in that building and eagerly creates its interior and enemy cache. `update_base_floors()` advances off-screen infected and powered turrets once per second, while the current floor continues using the normal frame simulation.
+Interior cache eviction skips keys in `World.pinned_interiors`. Placing a radio center pins every floor in that building and eagerly creates its interior and enemy cache. `update_base_floors()` advances off-screen infected and every eligible data-defined defence once per second, while the current floor continues using the normal frame simulation.
+
+Furniture power is building-wide. `building_powered()` searches every built floor for an active catalog entry marked `power_source`; generators and battery banks therefore share one path. Production furniture persists `ready_at` in world minutes, so leaving, saving, or reloading cannot reset a harvest. Outdoor furniture is keyed from its placed center rather than the player's block and is queried from a bounded 3 × 3 neighborhood for interaction, collision, defence, and light.
+
+Lighting remains a screen-space post-process. After the world render, `draw_light()` applies the appropriate indoor, sewer, or time-of-day darkness, gathers active visible light definitions, and cuts radial gradients out of that overlay. A missing `cone` produces circular coverage. Directional definitions clip the same falloff to the item's saved quarter-turn rotation. Range, cone width, strength, tint, power, and flicker remain catalog data rather than separate rendering branches.
 
 The sewer never allocates one city-sized tile map. `sewer_point_open()` determines whether a circle fits inside the connected boundary tunnels, cross-tunnels, or central chamber for its current block. Rendering and enemy generation only visit nearby blocks.
 
 ## movement and collision
 
-Player movement is resolved one axis at a time. Outdoors, circles are checked against nearby rectangular buildings and the city boundary. Indoors, the player is checked against the interior boundary, generated walls, and built furniture. Sewers use the analytic tunnel/chamber boundary. Every interior template connects its rooms through protected doorways, galleries, cross-halls, or spines, while entry, exit, stair, sewer-grate, and passage clearances are kept free of fixtures and infected spawn points. A blocked position from an older save is relocated to a safe transition point when the save loads.
+Player movement is resolved one axis at a time. Outdoors, circles are checked against nearby rectangular buildings, built furniture, and the city boundary. Indoors, the player is checked against the interior boundary, generated walls, and built furniture. Sewers use the analytic tunnel/chamber boundary. Every interior template connects its rooms through protected doorways, galleries, cross-halls, or spines, while entry, exit, stair, sewer-grate, and passage clearances are kept free of fixtures and infected spawn points. A blocked position from an older save is relocated to a safe transition point when the save loads.
 
 Infected and survivors use similar circle-versus-rectangle checks. When blocked, a roaming entity changes its wander direction rather than running pathfinding. Recruited survivors follow distinct formation targets and are safely repositioned around the player during entrances, exits, floor changes, save restoration, or extreme separation. Looting companions move toward reserved container positions and use the same stalled-movement recovery as formation travel.
 
