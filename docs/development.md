@@ -172,7 +172,7 @@ Run the dependency-free automated suite before merging:
 node tests.mjs
 ```
 
-The suite checks startup, persistence, crafting, generated content, all building types, every base interior template at minimum dimensions, sampled geometry and family variety, deterministic regeneration, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
+The suite checks startup, persistence, crafting, generated content, all building types, every base interior template at minimum dimensions, sampled geometry and family variety, deterministic regeneration, four-way road-facing exteriors, rotated roof fixtures, matching interior entrances and exits, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
 
 1. Load the start screen with no console errors.
 2. Begin a new run and move with both WASD and arrow keys.
