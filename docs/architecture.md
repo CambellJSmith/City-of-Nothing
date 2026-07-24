@@ -51,7 +51,7 @@ The update phase performs these operations:
 4. Generate or retrieve nearby human survivors, update their needs, tactical orders, movement, equipment choice, looting, and combat.
 5. Generate or retrieve nearby infected and update pursuit against the nearest living human.
 6. Update local built furniture and every pinned floor in the active radio base.
-7. Age transient effects, drain hunger, and apply starvation.
+7. Age transient effects, drain hunger, apply starvation, and regenerate well-fed humans.
 8. Find the nearest transition, container, survivor, sewer grate, or built furnishing.
 9. Smooth the camera, refresh the HUD, and request a rate-limited save.
 
@@ -133,11 +133,13 @@ The sewer never allocates one city-sized tile map. `sewer_point_open()` determin
 
 ## movement and collision
 
-Player movement is resolved one axis at a time. Outdoors, circles are checked against nearby rectangular buildings, built furniture, and the city boundary. Indoors, the player is checked against the interior boundary, generated walls, and built furniture. Sewers use the analytic tunnel/chamber boundary. Every interior template connects its rooms through protected doorways, galleries, cross-halls, or spines, while entry, exit, stair, sewer-grate, and passage clearances are kept free of fixtures and infected spawn points. A blocked position from an older save is relocated to a safe transition point when the save loads.
+All moving characters share `static_point_open()`. Outdoors, circles are checked against nearby rectangular buildings, built furniture, and the city boundary. Indoors, they are checked against the interior boundary, generated walls, and built furniture. Sewers use the analytic tunnel/chamber boundary. Every interior template connects its rooms through protected doorways, galleries, cross-halls, or spines, while entry, exit, stair, sewer-grate, and passage clearances are kept free of fixtures and infected spawn points. A blocked position from an older save is relocated to a safe transition point when the save loads.
 
-Infected and survivors use similar circle-versus-rectangle checks. When blocked, a roaming entity changes its wander direction rather than running pathfinding. Recruited survivors follow distinct formation targets and are safely repositioned around the player during entrances, exits, floor changes, save restoration, or extreme separation. Looting companions move toward reserved container positions and use the same stalled-movement recovery as formation travel.
+Survivors and infected use `navigate_character()` for combat approaches, formation travel, held positions, and container work. A direct static line is used immediately when clear. Otherwise `find_navigation_path()` runs bounded eight-direction A* over a local grid, rejects diagonal corner cutting, and smooths the resulting cells into the furthest visible waypoints. Each actor caches its path for a short staggered interval and only recalculates when the goal moves materially, the route expires, or movement fails. The search expands its cell size when a long route would exceed the fixed node budget, keeping city-scale pursuit bounded.
 
-This keeps the simulation inexpensive, but it also means autonomous entities do not calculate full routes around complex obstacles.
+Dynamic characters are excluded from the A* grid because their positions change every frame. Instead, `character_avoidance()` adds short-range separation steering while the final movement check rejects motion deeper into another character's radius. `separate_characters()` resolves spawn, transition, or legacy overlaps without moving the player or crossing static collision. The player, survivors, and infected therefore cannot occupy the same space, but actors already overlapping are still allowed to move outward.
+
+Recruited survivors keep distinct formation targets and accelerate when separated. Transitions deliberately place the team in validated open positions, but ordinary travel no longer teleports a companion after a stuck timer; the cached navigation route is invalidated and rebuilt instead.
 
 ## combat model
 
@@ -148,7 +150,9 @@ The equipped weapon selects the attack path:
 - Shotguns cast five slightly separated rays and apply a fraction of the weapon's attack for each pellet that hits.
 - Weapon noise alerts active infected within a derived radius.
 - Armor reduces incoming damage, subject to a reduction cap and minimum final damage.
-- Survivors choose the highest-attack currently usable weapon, consume matching ammunition, and use safe food or medicine at need thresholds.
+- Survivors maintain weapon and armor equipment slots, choose a usable weapon from target distance, enemy toughness, nearby clustering, ammunition reserves, and close-quarters suitability, and immediately fall back when ammunition is exhausted.
+- Survivor food and medicine choices minimize waste against current need, poisoned food is excluded, and equipped armor rather than every carried garment supplies damage reduction.
+- Players and survivors regenerate at the same deliberately slow rate only while hunger is above 75% and the character is not inside the brief post-hit window.
 - Recruited survivors choose targets through their individual order: broad hunting, close group defence, local self-defence while looting, or defence around a held position.
 - Infected select the nearest living player or survivor, stop at melee reach, and damage that target.
 - A survivor's killing blow records a group kill and transfers any deterministic drop into that survivor's inventory.
@@ -161,13 +165,13 @@ Group commands are issued through `issue_group_order()`. The command first filte
 
 The survivor update loop applies priorities in this order:
 
-1. Needs, medical use, food use, and starvation.
+1. Equipment evaluation, needs, best-fit medical and food use, well-fed regeneration, and starvation.
 2. Order-specific infected target selection.
 3. Combat when an eligible target exists.
 4. Looting or holding when those orders are active.
 5. Formation following or independent roaming.
 
-Container targets are claimed by ID. A looter excludes IDs already reserved by another looting companion, generates contents through the shared `container_inventory()` path, transfers every item into its personal inventory, and marks the container emptied. This preserves the same deterministic item IDs and save deltas as direct player looting.
+Container targets are claimed by ID. A looter excludes IDs already reserved by another looting companion, generates contents through the shared `container_inventory()` path, and transfers items while its 35 kg personal capacity permits. The container is only marked emptied when its last item moves; a full companion reports the problem and returns to formation. This preserves the same deterministic item IDs and save deltas as direct player looting.
 
 Shouting creates a short-lived presentation label, plays a synthesized voice-like cue, and calls the existing noise alert path. The label and sound are transient. Survivor order fields are persistent. Loot and hold tasks are reset to following during a building or floor transition because their positions are local to the previous scene.
 
@@ -218,7 +222,7 @@ The save key is `city_of_nothing_save_v1`, and the serialized object declares `v
 | `looted` | IDs of fully emptied containers |
 | `killed` | Defeated infected IDs; only the most recent 4,000 are serialized |
 | `lost_survivors` | Survivor IDs that must not regenerate after death |
-| `companions` | Recruited survivor state, including needs, inventory, loadout, kills, tactical order, engagement, radio assignment, anchor, and reserved container ID |
+| `companions` | Recruited survivor state, including needs, finite inventory, equipment-slot IDs, kills, tactical order, engagement, radio assignment, anchor, and reserved container ID |
 | `outdoor_survivors` | Up to 80 recently encountered outdoor-zone survivor populations |
 | `container_items` | Map entries containing generated-but-not-yet-taken loot |
 | `built_furniture` | Map entries containing player-built furnishings for each street or building floor |
@@ -237,6 +241,6 @@ globalThis.city_of_nothing
 globalThis.city_of_nothing_test
 ```
 
-`city_of_nothing` is the live `Game` instance. `city_of_nothing_test` contains item helpers, content catalogs, construction, workbench, radio and engagement definitions, interior-template data, combat constants, survivor-AI constants, city geometry, and sewer geometry for console inspection or lightweight automated tests.
+`city_of_nothing` is the live `Game` instance. `city_of_nothing_test` contains item helpers, content catalogs, construction, workbench, radio and engagement definitions, interior-template data, combat, survival, navigation, and survivor-AI constants, city geometry, and sewer geometry for console inspection or lightweight automated tests.
 
 These globals are developer interfaces, not isolated security boundaries. Do not place secrets in the game or trust browser state as authoritative.

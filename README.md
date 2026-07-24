@@ -13,8 +13,9 @@ The entire game is plain HTML, CSS, and JavaScript. There is no build step, pack
 - Procedural multi-floor interiors selected from 371 connected base templates, including upper floors and basements
 - Melee weapons, firearms, armor, food, medicine, ammunition, tools, and materials
 - Walker, runner, and brute infected variants
-- Autonomous human survivors who roam, manage supplies, fight infected, converse, and can join the player
+- Autonomous human survivors with finite personal inventories, equipped armor, smart food and medicine use, situational weapon selection, conversation, and recruitment
 - Persistent companion groups that travel through streets, buildings, and floors in formation
+- Shared obstacle-aware navigation and local avoidance that routes survivors and infected around walls while keeping every character's space clear
 - Nearby group voice orders for attacking, following, looting containers, and holding ground
 - A 58-piece furniture catalog spanning storage, comfort, workshops, supply production, defences, power, command, and lighting
 - Functional beds and seating, medical and recovery stations, water and food production, rally/map tools, three turrets, traps, fences, alarms, and sensors
@@ -65,7 +66,7 @@ On touch devices, use the virtual movement stick and the **use**, **attack**, an
 | `index.html` | Canvas, HUD, menus, inventory, construction, workbench, radio, loot, guide, death screen, and touch-control markup |
 | `styles.css` | Visual system, responsive layouts, overlays, HUD components, touch controls, and animation |
 | `game.js` | Data definitions, procedural generation, simulation, construction, bases, sewers, AI, combat, inventory, persistence, audio, and rendering |
-| `tests.mjs` | Dependency-free Node regression tests, including full-city sewer access and exhaustive template connectivity |
+| `tests.mjs` | Dependency-free Node regression tests, including navigation, AI decisions, separation, full-city sewer access, and exhaustive template connectivity |
 | [`docs/architecture.md`](docs/architecture.md) | Runtime design, state ownership, generation, rendering, persistence, and performance |
 | [`docs/gameplay-reference.md`](docs/gameplay-reference.md) | Current mechanics, districts, combat, infected, loot, construction, bases, sewers, and saves |
 | [`docs/development.md`](docs/development.md) | Local workflow, extension points, debugging tools, validation, and deployment |
@@ -78,7 +79,9 @@ On touch devices, use the virtual movement stick and the **use**, **attack**, an
 - `Inventory` owns items, equipment, consumption, and inventory UI rendering.
 - `Sound` creates short effects with the Web Audio API.
 
-`Game` also owns infected and human-survivor AI. Independent survivors roam nearby blocks, use personal inventories, fight with usable weapons, and can be recruited into a formation that follows the player across world transitions. Recruited survivors retain individual tactical orders and can divide nearby container-looting work without duplicating targets.
+`Game` also owns infected and human-survivor AI. Independent survivors roam nearby blocks, equip the best armor they carry, choose weapons for the current distance and threat, preserve ammunition when melee is sensible, consume appropriately sized safe food and medicine, and can be recruited into a formation that follows the player across world transitions. Recruited survivors retain individual tactical orders and divide nearby container-looting work without duplicating targets or exceeding personal carrying capacity.
+
+Survivors and infected share cached A* navigation over the current exterior, interior, or sewer geometry. Clear routes are followed directly; blocked routes use smoothed waypoints around walls, buildings, construction, and tunnel boundaries. Short-range steering and a final separation pass prevent the player, survivors, and infected from occupying the same space. The player and every active or remote survivor slowly regenerate health while hunger remains above 75%.
 
 Only the area around the player is normally simulated and rendered. A radio-designated base is the exception: all of its floors are pinned and continue simulating while the player is elsewhere. Generic defence definitions keep standard, heavy, and shotgun turrets plus contact traps active through the same bounded base update. Light cutouts are composited only for visible sources in the current location. Sewer geometry is generated locally from a globally connected plan, so the underground network covers the city without being stored as one enormous map.
 
@@ -97,7 +100,7 @@ The save contains:
 - Kill, loot, and construction statistics
 - Looted container IDs and remaining generated container contents
 - Defeated infected IDs
-- Recruited companions, their inventories, health, hunger, kill counts, and current orders
+- Recruited companions, their finite inventories, equipped weapon and armor slots, health, hunger, kill counts, and current orders
 - Built furniture, stored contents, the designated base, radio missions, and engagement rules
 - Encountered independent survivors and permanently lost survivor IDs
 

@@ -131,7 +131,10 @@ Human survivor state is owned by `Game`, not `World`. Keep these responsibilitie
 
 - `survivors_outside()` must remain deterministic for unseen blocks.
 - Recruited and lost IDs must be excluded from regenerated outdoor populations.
-- `update_survivors()` owns needs, target selection, roaming, following, and combat.
+- `update_survivors()` owns equipment evaluation, needs, regeneration, target selection, roaming, following, and combat.
+- `survivor_weapon()` and `survivor_weapon_score()` must reject unusable firearms and preserve the distance, threat, cluster, and ammunition tradeoffs rather than reverting to raw attack sorting.
+- `survivor_equip_best_armor()` owns wearable slot choice; damage reduction must come from equipped slots through `survivor_armor()`, not every garment in the item array.
+- `survivor_add_item()` is the capacity gate for companion loot, infected drops, and radio mission rewards.
 - `survivor_target()` must preserve the different engagement limits for follow, attack, loot, and hold orders.
 - `issue_group_order()` must only affect living companions inside the hearing radius.
 - Companion container looting must use `container_inventory()` so player and NPC searches share deterministic contents and save state.
@@ -139,6 +142,14 @@ Human survivor state is owned by `Game`, not `World`. Keep these responsibilitie
 - Scene-local loot and hold tasks must reset during transitions; follow and attack may continue.
 - Survivor-generated dialogue and loadout markup must escape runtime text.
 - New persistent survivor fields need tolerant defaults in `restore_survivor()` and explicit output in `serialise_survivor()`.
+
+### change navigation or collision
+
+`static_point_open()` is the shared geometry contract for player, survivor, infected, pathfinding, and separation movement. Any new solid world object must be added there so direct movement and A* agree.
+
+`find_navigation_path()` runs bounded local eight-direction A*, prevents diagonal corner cutting, and smooths returned waypoints through `line_static_open()`. Keep the node budget and adaptive cell size intact when extending it. `navigation_waypoint()` owns per-actor cache invalidation, while `navigate_character()` is the common approach used by survivor combat, formations, hold/loot tasks, and infected pursuit.
+
+Moving people are intentionally not baked into path grids. `character_avoidance()` handles short-range steering, `dynamic_point_open()` prevents deeper overlap, and `separate_characters()` repairs existing overlaps. Test all three pairings—player/survivor, player/infected, and survivor/infected—when changing radii or spacing.
 
 ## debug and test surface
 
@@ -163,6 +174,8 @@ city_of_nothing_test.radio_missions
 city_of_nothing_test.engagement_rules
 city_of_nothing_test.sewer_geometry
 city_of_nothing_test.survivor_ai
+city_of_nothing_test.survival
+city_of_nothing_test.navigation
 ```
 
 Create an isolated item record:
@@ -206,7 +219,7 @@ Run the dependency-free automated suite before merging:
 node tests.mjs
 ```
 
-The suite checks startup, persistence, fixed recipes, all 58 furniture definitions, every construction category, catalog rendering, light range/cone variety, construction placement and storage, powered toggles, production timers, enhanced medical use, contact defence, directional light rendering, radio missions and engagement, base-floor pinning and remote simulation, every street grate across the 128 × 128 city, basement sewer links, connected tunnel geometry, sewer transitions and enemy placement, survivor AI, all group orders, all building types, every base interior template at minimum dimensions, deterministic regeneration, four-way road-facing exteriors, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
+The suite checks startup, persistence, fixed recipes, all 58 furniture definitions, every construction category, catalog rendering, light range/cone variety, construction placement and storage, powered toggles, production timers, enhanced medical use, contact defence, directional light rendering, radio missions and engagement, base-floor pinning and remote simulation, every street grate across the 128 × 128 city, basement sewer links, connected tunnel geometry, sewer transitions and enemy placement, survivor inventory capacity, equipment, best-fit supplies, situational weapon selection, well-fed regeneration, shared A* routes, character separation, all group orders, all building types, every base interior template at minimum dimensions, deterministic regeneration, four-way road-facing exteriors, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
 
 1. Load the start screen with no console errors.
 2. Begin a new run and move with both WASD and arrow keys.
@@ -220,14 +233,18 @@ The suite checks startup, persistence, fixed recipes, all 58 furniture definitio
 10. Compare candle, oil lamp, table, floor, ceiling, string, flood, spotlight, emergency, campfire, and flashlight coverage at night; rotate every directional light.
 11. Exercise standard, heavy, and shotgun turrets, a barricade, spike trap, electric fence, siren, and motion sensor with and without power.
 12. Place a radio center, leave the building, and verify every floor stays active.
-13. Meet a survivor, recruit them, and use the radio to send them on each assignment, recall them, and change engagement.
-14. Press `Q`, issue every group order, and verify only nearby non-remote teammates respond.
-15. Enter a street sewer grate, travel through tunnels and chambers, fight, and emerge through another street and a basement.
-16. Order multiple companions to loot and verify they divide containers, carry the contents, and return when clear.
-17. Reload and verify the same construction, production timers, light states, stored items, base, sewer position, companions, radio state, inventory, loot, and kills.
-18. Resize below both responsive breakpoints.
-19. Test a coarse-pointer device or browser emulation for the movement stick, use, attack, and orders buttons.
-20. Confirm the console contains no uncaught exceptions.
+13. Meet a survivor, inspect their equipped armor and carried weight, recruit them, and use the radio to send them on each assignment, recall them, and change engagement.
+14. Give a teammate melee and ranged choices, then compare their weapon at close range, long range, against a brute, with a group, and after ammunition runs out.
+15. Keep the player and a survivor above 75% hunger while injured, verify slow regeneration, then lower hunger to the threshold and verify it stops.
+16. Lead survivors and infected around exterior buildings, interior cross-walls, placed barricades, and sewer corners; verify nobody becomes stuck or teleports.
+17. Crowd the player, companions, and infected through a doorway and verify avoidance keeps every collision circle separate.
+18. Press `Q`, issue every group order, and verify only nearby non-remote teammates respond.
+19. Enter a street sewer grate, travel through tunnels and chambers, fight, and emerge through another street and a basement.
+20. Order multiple companions to loot and verify they divide containers, respect carrying capacity, leave overflow behind, and return when clear.
+21. Reload and verify the same construction, production timers, light states, stored items, base, sewer position, companions, radio state, inventories, equipped slots, loot, and kills.
+22. Resize below both responsive breakpoints.
+23. Test a coarse-pointer device or browser emulation for the movement stick, use, attack, and orders buttons.
+24. Confirm the console contains no uncaught exceptions.
 
 For deterministic systems, repeat the same action after a clean save and confirm the same block, building, interior, infected, and loot results appear.
 
