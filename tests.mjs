@@ -115,7 +115,12 @@ function assert_passage_clear(layout, passage, label) {
   const step = 12;
   for (let y = passage.y + radius; y <= passage.y + passage.h - radius; y += step) {
     for (let x = passage.x + radius; x <= passage.x + passage.w - radius; x += step) {
-      assert.ok(point_is_walkable(layout, x, y, radius), `${label} ${passage.kind} passage is clear at ${Math.round(x)},${Math.round(y)}`);
+      const blocking_wall = layout.walls.find((wall) => {
+        const nearest_x = Math.max(wall.x, Math.min(x, wall.x + wall.w));
+        const nearest_y = Math.max(wall.y, Math.min(y, wall.y + wall.h));
+        return (x - nearest_x) ** 2 + (y - nearest_y) ** 2 < radius ** 2;
+      });
+      assert.ok(!blocking_wall, `${label} ${passage.kind} passage ${JSON.stringify(passage)} is clear at ${Math.round(x)},${Math.round(y)}; wall ${JSON.stringify(blocking_wall)}`);
     }
   }
   for (const fixture of layout.furniture) {
@@ -168,6 +173,11 @@ function assert_interior_connected(layout, label) {
   if (layout.entry) assert.ok(layout.passages.some((passage) => passage.kind === "entry"), `${label} has a protected entry route`);
 }
 
+function interior_geometry_fingerprint(layout) {
+  const walls = layout.walls.map((wall) => [wall.x, wall.y, wall.w, wall.h].map((value) => Math.round(value)).join(",")).join(";");
+  return `${layout.width}x${layout.height}:${walls}`;
+}
+
 assert.ok(game, "game initializes");
 assert.equal(ids.length, new Set(ids).size, "HTML ids are unique");
 assert.match(html, /<script src="game\.js"><\/script>/, "game script supports direct local launch");
@@ -178,6 +188,13 @@ for (const id of new Set(dom_references)) assert.ok(ids.includes(id), `DOM refer
 for (const table of Object.values(api.loot_tables)) {
   for (const item_name of table) assert.ok(api.item_catalog[item_name], `loot item ${item_name} exists`);
 }
+const interior_templates = Object.values(api.interior_template_catalog).flat();
+assert.ok(interior_templates.length >= 350, "the interior catalog contains hundreds of base templates");
+assert.equal(new Set(interior_templates.map((template) => template.id)).size, interior_templates.length, "interior template ids are unique");
+for (const [type, families] of Object.entries(api.interior_template_families)) {
+  const available_templates = families.reduce((count, family) => count + api.interior_template_catalog[family].length, 0);
+  assert.ok(available_templates >= 240, `${type} can select from a large template pool`);
+}
 
 elements.get("new_game_button").click();
 assert.equal(game.started, true, "new game starts");
@@ -185,6 +202,40 @@ assert.equal(elements.get("start_screen").hidden, true, "new game button closes 
 assert.equal(game.inventory.items.length, 5, "starter inventory is created");
 assert.equal(game.inventory.equipped("weapon").name, "baseball bat", "starter weapon is equipped");
 assert.ok(storage.has("city_of_nothing_save_v1"), "new game saves locally");
+
+const family_test_types = {
+  vertical_spine: "office",
+  horizontal_gallery: "shop",
+  cross_hall: "civic",
+  front_suites: "house",
+  industrial_bays: "warehouse",
+};
+for (const template of interior_templates) {
+  const type = family_test_types[template.family];
+  const width = template.family === "industrial_bays" ? 1040 : 840;
+  const height = template.family === "industrial_bays" ? 680 : 640;
+  const layout = {
+    width,
+    height,
+    template_id: template.id,
+    template_family: template.family,
+    room_kind_offset: 0,
+    walls: [],
+    doors: [],
+    passages: [],
+    rooms: [],
+    clearances: [],
+    furniture: [],
+    containers: [],
+    up: { x: width - 105, y: 95 },
+    down: { x: 105, y: 95 },
+    exit: { x: width * .5, y: height - 38 },
+    entry: { x: width * .5, y: height - 90 },
+  };
+  game.world.make_interior_floor_plan(layout, type, template, () => .5);
+  assert.ok(layout.rooms.length >= 3, `${template.id} has purposeful rooms`);
+  assert_interior_connected(layout, `catalog template ${template.id}`);
+}
 
 storage_locked = true;
 game.started = false;
@@ -250,6 +301,11 @@ assert.ok(point_is_walkable(game.layout(), game.player.x, game.player.y), "block
 
 const building_types = new Set();
 const representative_buildings = new Map();
+const generated_template_ids = new Map();
+const generated_template_families = new Map();
+const generated_geometries = new Map();
+const generated_dimensions = new Map();
+let determinism_checked = false;
 for (let y = -12; y <= 12; y += 1) {
   for (let x = -12; x <= 12; x += 1) {
     for (const generated of game.world.block(x, y).buildings) {
@@ -265,9 +321,24 @@ for (const [type, buildings] of representative_buildings) {
     for (let floor = -generated.basements; floor < generated.floors; floor += 1) {
       const label = `${type} ${generated.id} floor ${floor}`;
       const layout = game.world.interior(generated, floor);
+      const template_label = `${label} template ${layout.template_id}`;
+      if (!generated_template_ids.has(type)) generated_template_ids.set(type, new Set());
+      if (!generated_template_families.has(type)) generated_template_families.set(type, new Set());
+      if (!generated_geometries.has(type)) generated_geometries.set(type, new Set());
+      if (!generated_dimensions.has(type)) generated_dimensions.set(type, new Set());
+      generated_template_ids.get(type).add(layout.template_id);
+      generated_template_families.get(type).add(layout.template_family);
+      generated_geometries.get(type).add(interior_geometry_fingerprint(layout));
+      generated_dimensions.get(type).add(`${layout.width}x${layout.height}`);
       assert.ok(layout.rooms.length >= 3, `${label} has purposeful rooms`);
       assert.ok(layout.containers.length >= 5, `${label} retains useful searchable loot`);
-      assert_interior_connected(layout, label);
+      assert_interior_connected(layout, template_label);
+      if (!determinism_checked) {
+        const first_generation = JSON.stringify(layout);
+        game.world.interiors.delete(layout.key);
+        assert.equal(JSON.stringify(game.world.interior(generated, floor)), first_generation, "interior generation is deterministic after cache eviction");
+        determinism_checked = true;
+      }
       const enemies = game.enemies_inside(generated, floor);
       for (const enemy of enemies) {
         assert.ok(point_is_walkable(layout, enemy.x, enemy.y, enemy.radius), `${label} infected spawns in open floor space`);
@@ -275,6 +346,12 @@ for (const [type, buildings] of representative_buildings) {
       }
     }
   }
+}
+for (const type of building_types) {
+  assert.ok(generated_template_ids.get(type).size >= 8, `${type} samples use many different templates`);
+  assert.ok(generated_template_families.get(type).size >= 3, `${type} samples span several structural families`);
+  assert.ok(generated_geometries.get(type).size >= 10, `${type} samples have varied wall geometry`);
+  assert.ok(generated_dimensions.get(type).size >= 4, `${type} samples use varied interior dimensions`);
 }
 
 console.log("All City of Nothing tests passed.");
