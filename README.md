@@ -53,6 +53,7 @@ On touch devices, use the virtual movement stick and the **use** and **attack** 
 | `index.html` | Canvas, HUD, menus, inventory, crafting, loot, guide, death screen, and touch-control markup |
 | `styles.css` | Visual system, responsive layouts, overlays, HUD components, touch controls, and animation |
 | `game.js` | Data definitions, procedural generation, simulation, input, combat, inventory, crafting, persistence, audio, and rendering |
+| `tests.mjs` | Dependency-free Node regression tests, including generated-interior connectivity and transition safety |
 | [`docs/architecture.md`](docs/architecture.md) | Runtime design, state ownership, generation, rendering, persistence, and performance |
 | [`docs/gameplay-reference.md`](docs/gameplay-reference.md) | Current mechanics, districts, combat, infected, loot, crafting, and saves |
 | [`docs/development.md`](docs/development.md) | Local workflow, extension points, debugging tools, validation, and deployment |
@@ -92,4 +93,3 @@ Starting a new run removes the current save. Death does not overwrite it, so **r
 3. Select the `main` branch and `/ (root)`.
 
 GitHub Pages can serve the three source files directly; no build workflow is required.
-

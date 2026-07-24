@@ -164,13 +164,19 @@ The `killed` list is truncated to the most recent 4,000 IDs when serialized. Con
 
 ## validation checklist
 
-There is no automated test suite in the repository yet. Before merging a change, manually check the affected systems and at least this smoke path:
+Run the dependency-free automated suite before merging:
+
+```bash
+node tests.mjs
+```
+
+The suite checks startup, persistence, crafting, generated content, all building types, interior connectivity, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
 
 1. Load the start screen with no console errors.
 2. Begin a new run and move with both WASD and arrow keys.
 3. Sprint until stamina drains, then confirm recovery.
 4. Aim and attack with mouse and keyboard.
-5. Enter a building, use stairs when present, and leave.
+5. Enter several building types, confirm every room is reachable, use stairs when present, and leave.
 6. Search a container and take one item, then take all.
 7. Filter inventory, inspect an item, equip or consume it, and drop an item.
 8. Combine two items and confirm both inputs are consumed.
@@ -196,4 +202,3 @@ For another static host, upload `index.html`, `styles.css`, and `game.js` togeth
 ## contribution flow
 
 Make changes on a topic branch and open a pull request into `main`. Keep content, behavior, and documentation changes scoped clearly so deterministic-generation and save-compatibility effects can be reviewed before merge.
-
