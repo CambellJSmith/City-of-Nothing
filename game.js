@@ -498,6 +498,7 @@ class World {
       height,
       walls: [],
       doors: [],
+      passages: [],
       rooms: [],
       clearances: [],
       furniture: [],
@@ -509,14 +510,14 @@ class World {
     };
     this.make_interior_floor_plan(layout, building.type, random);
     for (const point of [layout.entry, layout.exit, layout.up, layout.down]) if (point) layout.clearances.push({ x: point.x, y: point.y, radius: point === layout.exit ? 50 : 76 });
-    for (const door of layout.doors) layout.clearances.push({ x: door.x, y: door.y, radius: 48 });
+    for (const door of layout.doors) layout.clearances.push({ x: door.x, y: door.y, radius: Math.max(60, door.width * .5) });
     this.populate_interior(layout, building, floor, random);
     this.interiors.set(key, layout);
     if (this.interiors.size > 120) this.interiors.delete(this.interiors.keys().next().value);
     return layout;
   }
 
-  add_partition(layout, orientation, position, start, end, openings, opening_width = 88) {
+  add_partition(layout, orientation, position, start, end, openings, opening_width = 128) {
     const thickness = 12;
     const half_opening = opening_width * .5;
     const gaps = openings.map((opening) => ({ start: clamp(opening - half_opening, start, end), end: clamp(opening + half_opening, start, end), center: opening })).sort((first, second) => first.start - second.start);
@@ -528,6 +529,9 @@ class World {
       }
       cursor = Math.max(cursor, gap.end);
       layout.doors.push(orientation === "horizontal" ? { x: gap.center, y: position, orientation, width: opening_width } : { x: position, y: gap.center, orientation, width: opening_width });
+      layout.passages.push(orientation === "horizontal"
+        ? { x: gap.center - half_opening, y: position - 72, w: opening_width, h: 144, kind: "door" }
+        : { x: position - 72, y: gap.center - half_opening, w: 144, h: opening_width, kind: "door" });
     }
     if (cursor < end) {
       if (orientation === "horizontal") layout.walls.push({ x: cursor, y: position, w: end - cursor, h: thickness });
@@ -567,18 +571,19 @@ class World {
     }
     this.add_partition(layout, "vertical", hall_left, top, bottom, left_doors);
     this.add_partition(layout, "vertical", hall_right, top, bottom, right_doors);
+    if (layout.entry) layout.passages.push({ x: hall_left + 12, y: 54, w: hall_right - hall_left - 12, h: layout.entry.y - 54, kind: "entry" });
   }
 
   make_front_room_floor_plan(layout, type) {
     const edge = 28;
     const center = layout.width * .5;
     const back_wall_y = layout.height * .4;
-    const left_door_x = layout.width * .28;
-    const right_door_x = layout.width * .72;
-    this.add_partition(layout, "horizontal", back_wall_y, edge, layout.width - edge, [left_door_x, right_door_x]);
-    this.add_partition(layout, "vertical", center, edge, back_wall_y, [back_wall_y * .53], 80);
-    layout.rooms.push({ x: edge, y: edge, w: center - edge, h: back_wall_y - edge, door_x: left_door_x, door_y: back_wall_y, kind: type === "house" ? "bedroom" : "stock room" });
-    layout.rooms.push({ x: center + 12, y: edge, w: layout.width - center - edge - 12, h: back_wall_y - edge, door_x: right_door_x, door_y: back_wall_y, kind: type === "diner" ? "kitchen" : "back room" });
+    const divider_end = back_wall_y - 96;
+    this.add_partition(layout, "horizontal", back_wall_y, edge, layout.width - edge, [center], 144);
+    this.add_partition(layout, "vertical", center, edge, divider_end, []);
+    if (layout.entry) layout.passages.push({ x: center - 72, y: divider_end + 32, w: 144, h: layout.entry.y - divider_end - 32, kind: "entry" });
+    layout.rooms.push({ x: edge, y: edge, w: center - edge, h: back_wall_y - edge, door_x: center, door_y: back_wall_y, kind: type === "house" ? "bedroom" : "stock room" });
+    layout.rooms.push({ x: center + 12, y: edge, w: layout.width - center - edge - 12, h: back_wall_y - edge, door_x: center, door_y: back_wall_y, kind: type === "diner" ? "kitchen" : "back room" });
     layout.rooms.push({ x: edge, y: back_wall_y + 12, w: layout.width - edge * 2, h: layout.height - back_wall_y - edge - 12, door_x: layout.width * .5, door_y: layout.height - 90, kind: type === "house" ? "living room" : type === "diner" ? "dining room" : "shop floor" });
   }
 
@@ -586,8 +591,9 @@ class World {
     const edge = 28;
     const office_left = layout.width - 310;
     const office_bottom = 248;
-    this.add_partition(layout, "vertical", office_left, edge, office_bottom, [148], 84);
-    this.add_partition(layout, "horizontal", office_bottom, office_left, layout.width - edge, [layout.width - 148], 84);
+    this.add_partition(layout, "vertical", office_left, edge, office_bottom, [148], 120);
+    this.add_partition(layout, "horizontal", office_bottom, office_left, layout.width - edge, [layout.width - 148], 120);
+    if (layout.entry) layout.passages.push({ x: layout.width * .5 - 72, y: 54, w: 144, h: layout.entry.y - 54, kind: "entry" });
     layout.rooms.push({ x: edge, y: edge, w: office_left - edge, h: office_bottom - edge, door_x: office_left, door_y: 148, kind: "workshop" });
     layout.rooms.push({ x: office_left + 12, y: edge, w: layout.width - office_left - edge - 12, h: office_bottom - edge, door_x: layout.width - 148, door_y: office_bottom, kind: "office" });
     layout.rooms.push({ x: edge, y: office_bottom + 12, w: layout.width - edge * 2, h: layout.height - office_bottom - edge - 12, door_x: layout.width * .5, door_y: layout.height - 90, kind: "warehouse floor" });
@@ -639,6 +645,7 @@ class World {
     if (fixture.x < 36 || fixture.y < 36 || fixture.x + fixture.w > layout.width - 36 || fixture.y + fixture.h > layout.height - 36) return false;
     if (layout.walls.some((wall) => fixture.x < wall.x + wall.w + 14 && fixture.x + fixture.w + 14 > wall.x && fixture.y < wall.y + wall.h + 14 && fixture.y + fixture.h + 14 > wall.y)) return false;
     if (layout.clearances.some((clearance) => circle_rect(clearance.x, clearance.y, clearance.radius, fixture))) return false;
+    if (layout.passages.some((passage) => fixture.x < passage.x + passage.w + 12 && fixture.x + fixture.w + 12 > passage.x && fixture.y < passage.y + passage.h + 12 && fixture.y + fixture.h + 12 > passage.y)) return false;
     return !layout.furniture.some((item) => fixture.x < item.x + item.w + 12 && fixture.x + fixture.w + 12 > item.x && fixture.y < item.y + item.h + 12 && fixture.y + fixture.h + 12 > item.y);
   }
 
@@ -646,6 +653,7 @@ class World {
     if (x < 36 + radius || y < 36 + radius || x > layout.width - 36 - radius || y > layout.height - 36 - radius) return false;
     if (layout.walls.some((wall) => circle_rect(x, y, radius, wall))) return false;
     if (avoid_clearances && layout.clearances.some((clearance) => distance_sq(x, y, clearance.x, clearance.y) < (radius + clearance.radius + 24) ** 2)) return false;
+    if (avoid_clearances && layout.passages.some((passage) => circle_rect(x, y, radius + 24, passage))) return false;
     return true;
   }
 
