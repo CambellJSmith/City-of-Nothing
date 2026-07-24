@@ -4,9 +4,9 @@ This is a reference for the mechanics currently implemented in `game.js`. It des
 
 ## core loop
 
-Explore the city, enter buildings, defeat or avoid infected, search containers, manage hunger and health, improve equipment, and combine items. The city and its loot are reproducible, while the consequences of the run are saved locally.
+Explore the city, meet other survivors, enter buildings, defeat or avoid infected, search containers, manage hunger and health, improve equipment, and combine items. The city and its loot are reproducible, while the consequences of the run are saved locally.
 
-Simulation pauses while an inventory, crafting, or container panel is open.
+Simulation pauses while an inventory, crafting, container, or survivor-conversation panel is open.
 
 ## the city
 
@@ -56,7 +56,35 @@ Walking speed is 170 world units per second. Sprinting raises it to 260 before a
 
 The mouse controls facing on fine-pointer devices. With an idle pointer or on touch devices, the player faces the movement direction.
 
-Infected notice the player at close range or when alerted by an attack. Alerted infected continue pursuit while the player remains within their larger retention range.
+Infected notice nearby humans at close range or when alerted by an attack. They pursue the nearest living human, so independent survivors and recruited companions can draw attacks away from the player.
+
+## human survivors
+
+Human survivors are generated deterministically on outdoor blocks. Each has a stable identity, name, color, health, hunger, kill count, and personal inventory. They retain their state while their zone is cached and across saved encounters.
+
+Independent survivors:
+
+- Roam their current outdoor area when no infected are nearby.
+- Detect infected within 680 world units.
+- Select the highest-attack weapon they can currently use.
+- Use firearms only while matching ammunition remains, then fall back to another weapon or bare hands.
+- Approach to melee reach or hold a practical ranged distance before attacking.
+- Consume safe food when hunger falls below 55.
+- Use medical supplies when health falls below 58.
+- Can be attacked and killed by infected.
+
+Walk close and press `E` to talk. The conversation shows the survivor's current health, hunger, kills, weapon, and supplies. Choosing **invite to join your group** recruits them.
+
+Recruited companions:
+
+- Follow in a spaced formation behind the player.
+- Accelerate to catch up and regroup if separated.
+- Fight the same nearby infected using their own weapons and ammunition.
+- Enter and leave buildings with the player.
+- Move safely between upper floors and basements.
+- Preserve health, hunger, inventory, equipment choice, and kills in the save.
+
+A recruited companion who dies is removed from the group and does not regenerate. Items dropped by an infected killed by a survivor go into that survivor's inventory, giving them additional food or materials to use or carry.
 
 ## infected
 
@@ -70,7 +98,7 @@ Each infected is deterministically assigned a variant:
 
 Outdoor groups scale with district threat. Interiors normally generate two to five infected, with two additional infected in hospitals.
 
-Defeated infected remain as corpses while their current zone is cached. Their IDs are added to persistent state so they do not respawn after deterministic regeneration. Each kill also has a deterministic 25% chance to drop either an energy bar or cloth.
+Defeated infected remain as corpses while their current zone is cached. Their IDs are added to persistent state so they do not respawn after deterministic regeneration. Each kill also has a deterministic 25% chance to drop either an energy bar or cloth. The item goes to the player or survivor who delivered the killing blow.
 
 ## combat
 
@@ -150,7 +178,7 @@ Crafting immediately forces a save.
 
 The browser stores one save per origin under `city_of_nothing_save_v1`.
 
-Saved progress includes location, interior floor, survival state, inventory, equipment, world time, play time, statistics, emptied containers, remaining container contents, and defeated infected IDs.
+Saved progress includes location, interior floor, survival state, inventory, equipment, companions, encountered outdoor survivors, permanently lost survivor IDs, world time, play time, statistics, emptied containers, remaining container contents, and defeated infected IDs.
 
 Transient infected movement, current health of living infected, blood, attack effects, camera shake, open panels, and audio state are not saved. When a zone is reconstructed, surviving infected return to their deterministic starting state.
 
@@ -164,7 +192,7 @@ Death pauses the run and leaves the last save untouched. **Return to last save**
 | Left `Shift` | Sprint |
 | Mouse | Aim |
 | Left click / `Space` | Attack |
-| `E` | Use nearest available interaction |
+| `E` | Use the nearest interaction, including talking to survivors |
 | `I` / `Tab` | Toggle inventory |
 | `C` | Toggle crafting |
 | `1` | Equip strongest weapon |
@@ -172,4 +200,3 @@ Death pauses the run and leaves the last save untouched. **Return to last save**
 | `Esc` | Close panel |
 
 Touch mode provides an analog movement stick plus **use** and **attack** buttons. Inventory and crafting remain available from the quick bar.
-
