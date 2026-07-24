@@ -619,6 +619,28 @@ button:focus-visible {
   gap: 8px;
 }
 
+.build_group {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 8px;
+}
+
+.build_group > h3 {
+  margin: 10px 0 0;
+  color: var(--acid);
+  font-family: Impact, "Arial Narrow", sans-serif;
+  font-size: 15px;
+  font-weight: normal;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.build_group > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .build_catalog button,
 .recipe_list button,
 .command_grid button,
@@ -1140,6 +1162,10 @@ button:focus-visible {
     overflow: auto;
   }
 
+  .build_group > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   #radio_members {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     max-height: 180px;
@@ -1208,6 +1234,10 @@ button:focus-visible {
   .recipe_list,
   .command_grid,
   #radio_members {
+    grid-template-columns: 1fr;
+  }
+
+  .build_group > div {
     grid-template-columns: 1fr;
   }
 
