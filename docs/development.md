@@ -32,9 +32,9 @@ Browser storage is isolated by origin. Changing between a `file:` URL, `localhos
 Contains all static UI structure:
 
 - Main and minimap canvases
-- Location, vitals, weapon, threat, and quick-action HUD
+- Location, vitals, weapon, group, threat, and quick-action HUD
 - Interaction prompt and toast stack
-- Inventory, item inspector, crafting, and container overlays
+- Inventory, item inspector, crafting, container, and survivor-conversation overlays
 - Start, guide, and death screens
 - Touch controls
 
@@ -111,6 +111,17 @@ Generated identity and order matter. Inserting or reordering generation steps ca
 
 Runtime text interpolated into `innerHTML` must pass through `safe()`.
 
+### change survivor behavior
+
+Human survivor state is owned by `Game`, not `World`. Keep these responsibilities aligned:
+
+- `survivors_outside()` must remain deterministic for unseen blocks.
+- Recruited and lost IDs must be excluded from regenerated outdoor populations.
+- `update_survivors()` owns needs, target selection, roaming, following, and combat.
+- `place_companions()` must run after every world or floor transition.
+- Survivor-generated dialogue and loadout markup must escape runtime text.
+- New persistent survivor fields need tolerant defaults in `restore_survivor()` and explicit output in `serialise_survivor()`.
+
 ## debug and test surface
 
 Open browser developer tools while the game is running.
@@ -127,6 +138,7 @@ Inspect core content data:
 city_of_nothing_test.districts
 city_of_nothing_test.item_catalog
 city_of_nothing_test.loot_tables
+city_of_nothing_test.survivor_ai
 ```
 
 Create and combine isolated item records:
@@ -162,7 +174,7 @@ The save object currently declares version 1, but there is no migration layer ye
 5. Add an explicit migration before changing the meaning of an existing field.
 6. Increment the version or storage key only with a deliberate compatibility plan.
 
-The `killed` list is truncated to the most recent 4,000 IDs when serialized. Consider that cap when changing world scale or persistence expectations.
+The `killed` list is truncated to the most recent 4,000 IDs, and saved outdoor survivor zones are truncated to the most recent 80 map entries. Recruited companions and lost survivor IDs are serialized separately so they cannot be regenerated when an older outdoor zone is omitted.
 
 ## validation checklist
 
@@ -172,7 +184,7 @@ Run the dependency-free automated suite before merging:
 node tests.mjs
 ```
 
-The suite checks startup, persistence, crafting, generated content, all building types, every base interior template at minimum dimensions, sampled geometry and family variety, deterministic regeneration, four-way road-facing exteriors, rotated roof fixtures, matching interior entrances and exits, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
+The suite checks startup, persistence, crafting, survivor generation, needs, weapon selection, ammunition use, recruitment, companion transitions, infected target choice, generated content, all building types, every base interior template at minimum dimensions, sampled geometry and family variety, deterministic regeneration, four-way road-facing exteriors, rotated roof fixtures, matching interior entrances and exits, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
 
 1. Load the start screen with no console errors.
 2. Begin a new run and move with both WASD and arrow keys.
@@ -182,10 +194,12 @@ The suite checks startup, persistence, crafting, generated content, all building
 6. Search a container and take one item, then take all.
 7. Filter inventory, inspect an item, equip or consume it, and drop an item.
 8. Combine two items and confirm both inputs are consumed.
-9. Reload and continue; verify position, inventory, equipment, loot, and kills.
-10. Resize below both responsive breakpoints.
-11. Test a coarse-pointer device or browser emulation for the movement stick and touch buttons.
-12. Confirm the console contains no uncaught exceptions.
+9. Meet a survivor, talk, recruit them, and verify they follow and fight with their own supplies.
+10. Enter, change floors, leave, reload, and confirm the same companion remains safely with the player.
+11. Reload and continue; verify position, inventory, equipment, loot, kills, and companion state.
+12. Resize below both responsive breakpoints.
+13. Test a coarse-pointer device or browser emulation for the movement stick and touch buttons.
+14. Confirm the console contains no uncaught exceptions.
 
 For deterministic systems, repeat the same action after a clean save and confirm the same block, building, interior, infected, and loot results appear.
 
