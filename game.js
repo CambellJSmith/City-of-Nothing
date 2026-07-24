@@ -1221,6 +1221,8 @@ class Game {
   constructor() {
     this.canvas = dom.game_canvas;
     this.ctx = this.canvas.getContext("2d", { alpha: false });
+    this.light_canvas = document.createElement("canvas");
+    this.light_ctx = this.light_canvas.getContext("2d", { alpha: true });
     this.map_ctx = dom.minimap_canvas.getContext("2d");
     this.world = new World(SEED);
     this.sound = new Sound();
@@ -1540,7 +1542,10 @@ class Game {
     this.screen_h = Math.max(1, rect.height);
     this.canvas.width = Math.floor(this.screen_w * this.dpr);
     this.canvas.height = Math.floor(this.screen_h * this.dpr);
+    this.light_canvas.width = this.canvas.width;
+    this.light_canvas.height = this.canvas.height;
     this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.light_ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
   }
 
   begin() {
@@ -4246,8 +4251,12 @@ class Game {
       darkness = .68 * (1 - daylight);
     }
     if (darkness <= .01) return;
-    context.fillStyle = `rgba(3,6,7,${darkness})`;
-    context.fillRect(0, 0, this.screen_w, this.screen_h);
+    const light_context = this.light_ctx;
+    light_context.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    light_context.globalCompositeOperation = "source-over";
+    light_context.clearRect(0, 0, this.screen_w, this.screen_h);
+    light_context.fillStyle = `rgba(3,6,7,${darkness})`;
+    light_context.fillRect(0, 0, this.screen_w, this.screen_h);
     const sources = [];
     if (!this.sewer) {
       const powered = this.inside ? this.building_powered(this.inside.building.id) : false;
@@ -4260,7 +4269,11 @@ class Game {
     if (this.inventory.items.some((item) => item.tags.includes("light"))) {
       sources.push({ x: this.player.x, y: this.player.y, angle: this.player.angle, light: { range: 430, cone: .58, strength: .86, color: "rgba(226,238,217,.09)" }, id: "player_flashlight" });
     }
-    for (const source of sources) this.draw_light_source(context, source);
+    for (const source of sources) this.draw_light_source(light_context, source);
+    context.save();
+    context.globalCompositeOperation = "source-over";
+    context.drawImage(this.light_canvas, 0, 0, this.screen_w, this.screen_h);
+    context.restore();
   }
 
   draw_light_source(context, source) {
