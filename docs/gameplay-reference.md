@@ -191,24 +191,28 @@ Remaining generated contents are saved. A container is marked looted once its la
 
 ## construction and workbenches
 
-Press `B` to choose furniture. Construction consumes the exact named inventory materials shown in the menu. Aim the preview, press `R` to rotate, and press `E` or click to place; red previews are blocked by walls, fixtures, doors, transitions, another character, or other built furniture.
+Press `B` to browse 58 pieces in storage, comfort, workshop, defence, power, and lighting groups. Construction consumes the exact named inventory materials shown in the menu. Aim the preview, press `R` to rotate, and press `E` or click to place; red previews are blocked by walls, fixtures, doors, transitions, grates, trees, another character, or other built furniture. Outdoor-compatible construction is stored by the block containing the placed object, so it remains interactive and solid across block boundaries.
 
-| Furniture | Function |
+| Group | Furniture and function |
 | --- | --- |
-| Cupboard, chest, shelf | Persistent storage; items can be moved between the container and player inventory |
-| Bed | Advances time by two hours, restores stamina and some health, and costs hunger |
-| Cooker | Converts spoiled meat to cooked meat while its building has an active generator |
-| Crafting bench | Opens fixed recipes for bandages, spiked bats, ammunition, and electronic parts |
-| Turret | Automatically attacks infected in range while its building has an active generator |
-| Generator | Powers cookers and turrets throughout its building; can be switched off |
-| Campfire | Can be built indoors or outdoors and cooks spoiled meat without electricity |
-| Radio center | Designates the building as the team base and opens individual team commands |
+| Storage | Cupboard, chest, shelf, wardrobe, dresser, pantry, fridge, freezer, weapon rack, gun locker, medicine cabinet, tool cabinet, bookcase, footlocker, and crate stack all provide persistent two-way storage. |
+| Sleep and seating | Bed, bunk bed, sleeping bag, sofa, armchair, chair, and bench advance different amounts of time and provide different health, stamina, and hunger tradeoffs. |
+| Comfort | A powered shower and space heater restore health and stamina. A powered jukebox restores stamina, calls the local team back into follow formation, and adds colored ambient light. |
+| Workshops | Cooker, crafting bench, salvage bench, and ammunition press provide cooking or the declared fixed recipe set. A medical station improves the healing from a consumed bandage or medical kit. |
+| Supplies | Rain collectors, planter boxes, hydroponic racks, and water purifiers remember their next harvest time and produce food or clean water at different powered and unpowered intervals. |
+| Information and rallying | Map tables report local district, road, and threat information. Rally boards and dining tables assign available teammates to defend that position. |
+| Defences | Standard, heavy, and shotgun turrets trade range, damage, speed, and noise. Barricades block routes; spike traps work silently without power; electric fences damage infected with power; sirens lure infected; motion sensors count nearby threats. |
+| Power and command | Generators and battery banks provide switchable building-wide power. A radio center designates the active team base and opens individual team commands. |
+| Independent lights | Candles, oil lamps, campfires, and emergency lights work without building power. |
+| Powered lights | Table lamps, floor lamps, ceiling lights, string lights, floodlights, and spotlights provide progressively different coverage. Floodlights use a wide long cone; spotlights use the narrowest and longest throw. |
 
 The removed free-form system no longer combines arbitrary items. Workbenches only expose declared recipes with fixed inputs and outputs.
 
+Powered furniture works when any active generator or battery bank exists on any floor of its building. Light sources can be switched independently. Circular lights remove darkness around themselves, while directional lights use the placed rotation to aim their cone. Candles, oil lamps, and campfires flicker; carried flashlights retain a narrow player-facing beam.
+
 ## team bases
 
-Only one building is the active team base. Placing another radio center in a different building moves the designation. Every basement, ground floor, and upper floor in the active base remains generated, pinned in memory, and simulated while the player is outdoors, underground, or inside another building. Infected continue moving and powered turrets continue defending remote base floors.
+Only one building is the active team base. Placing another radio center in a different building moves the designation. Every basement, ground floor, and upper floor in the active base remains generated, pinned in memory, and simulated while the player is outdoors, underground, or inside another building. Infected continue moving and all eligible turrets, spike traps, and electric fences continue defending remote base floors.
 
 ## sewer network
 
