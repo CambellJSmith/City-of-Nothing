@@ -4,6 +4,10 @@ const CELL = 1000;
 const ROAD = 168;
 const CITY_RADIUS = 64;
 const PLAYER_RADIUS = 18;
+const SURVIVOR_RADIUS = 17;
+const SURVIVOR_NOTICE_RANGE = 680;
+const SURVIVOR_FOLLOW_DISTANCE = 72;
+const SURVIVOR_MELEE_REACH = 12;
 const INFECTED_MELEE_REACH = 16;
 const INFECTED_ATTACK_TIME = .18;
 const USE_RANGE = 76;
@@ -23,6 +27,21 @@ const road_names = [
   "marrow street", "bell avenue", "saint jude road", "holloway", "carrion lane",
   "orison boulevard", "mercy street", "redmarket road", "foundry way", "quiet mile",
   "needle street", "widow lane", "station road", "blackwater drive", "ash avenue",
+];
+
+const survivor_names = [
+  "alex", "bea", "cass", "dev", "eli", "frankie", "gray", "harper",
+  "imani", "jules", "kit", "lena", "morgan", "nico", "orin", "parker",
+  "quinn", "remy", "sam", "tess", "uma", "vic", "wren", "zuri",
+];
+
+const survivor_lines = [
+  "i have been moving alone. it is getting harder.",
+  "the dead are thick around here. watch your corners.",
+  "i can fight. i just need people i can trust.",
+  "there is safety in numbers, if nobody panics.",
+  "i have supplies and a weapon. both are better shared.",
+  "this city is too quiet until it suddenly is not.",
 ];
 
 const building_names = {
@@ -1089,8 +1108,12 @@ class Game {
     this.container_items = new Map();
     this.looted = new Set();
     this.killed = new Set();
+    this.lost_survivors = new Set();
     this.outdoor_enemies = new Map();
     this.indoor_enemies = new Map();
+    this.outdoor_survivors = new Map();
+    this.companions = [];
+    this.active_survivor = null;
     this.stats = { kills: 0, found: 0, crafted: 0 };
     this.shots = [];
     this.swings = [];
@@ -1108,6 +1131,95 @@ class Game {
 
   new_player() {
     return { x: -8000, y: 6000, angle: -Math.PI * .5, health: 100, stamina: 100, hunger: 82, hurt_time: 0 };
+  }
+
+  new_survivor(id, x, y, random, home_key) {
+    const name = survivor_names[Math.floor(random() * survivor_names.length)];
+    const weapon_name = ["kitchen knife", "hammer", "baseball bat", "crowbar", "9mm pistol"][Math.floor(random() * 5)];
+    const items = [
+      make_item(weapon_name, `${id}:weapon`),
+      make_item(["apple", "canned soup", "bottled water", "energy bar"][Math.floor(random() * 4)], `${id}:food`),
+    ];
+    if (weapon_name === "9mm pistol") items.push(make_item("9mm rounds", `${id}:ammo`));
+    if (random() < .55) items.push(make_item("medical kit", `${id}:medical`));
+    if (random() < .35) items.push(make_item("leather jacket", `${id}:armor`));
+    return {
+      id,
+      name,
+      x,
+      y,
+      angle: random() * TAU,
+      health: 68 + random() * 32,
+      hunger: 48 + random() * 46,
+      hurt_time: 0,
+      attack: random() * .5,
+      melee_time: 0,
+      stuck_time: 0,
+      wander: random() * 3,
+      wander_angle: random() * TAU,
+      speed: 132 + random() * 24,
+      radius: SURVIVOR_RADIUS,
+      items,
+      weapon_id: items[0].id,
+      recruited: false,
+      dead: false,
+      home_key,
+      color: ["#8fa9a0", "#b39b78", "#9d8eae", "#9fae7c", "#aa8178"][Math.floor(random() * 5)],
+      line: survivor_lines[Math.floor(random() * survivor_lines.length)],
+      kills: 0,
+    };
+  }
+
+  restore_survivor(data, recruited) {
+    const saved_x = Number(data?.x);
+    const saved_y = Number(data?.y);
+    const survivor = {
+      id: data?.id ?? uid("survivor"),
+      name: data?.name ?? "survivor",
+      x: Number.isFinite(saved_x) ? saved_x : this.player.x,
+      y: Number.isFinite(saved_y) ? saved_y : this.player.y,
+      angle: Number(data?.angle) || 0,
+      health: clamp(Number(data?.health) || 1, 1, 100),
+      hunger: clamp(Number(data?.hunger) || 0, 0, 100),
+      hurt_time: 0,
+      attack: 0,
+      melee_time: 0,
+      stuck_time: 0,
+      wander: 0,
+      wander_angle: Number(data?.wander_angle) || 0,
+      speed: clamp(Number(data?.speed) || 140, 100, 190),
+      radius: SURVIVOR_RADIUS,
+      items: Array.isArray(data?.items) ? data.items : [],
+      weapon_id: data?.weapon_id ?? null,
+      recruited,
+      dead: false,
+      home_key: data?.home_key ?? "",
+      color: data?.color ?? "#8fa9a0",
+      line: data?.line ?? survivor_lines[0],
+      kills: Math.max(0, Number(data?.kills) || 0),
+    };
+    if (!survivor.items.some((item) => item.id === survivor.weapon_id)) survivor.weapon_id = null;
+    return survivor;
+  }
+
+  serialise_survivor(survivor) {
+    return {
+      id: survivor.id,
+      name: survivor.name,
+      x: survivor.x,
+      y: survivor.y,
+      angle: survivor.angle,
+      health: survivor.health,
+      hunger: survivor.hunger,
+      wander_angle: survivor.wander_angle,
+      speed: survivor.speed,
+      items: survivor.items,
+      weapon_id: survivor.weapon_id,
+      home_key: survivor.home_key,
+      color: survivor.color,
+      line: survivor.line,
+      kills: survivor.kills,
+    };
   }
 
   bind() {
@@ -1141,6 +1253,7 @@ class Game {
     dom.clear_craft.addEventListener("click", () => { this.inventory.craft_ids = []; this.inventory.render_crafting(); });
     dom.craft_button.addEventListener("click", () => this.inventory.craft());
     dom.take_all.addEventListener("click", () => this.take_all());
+    dom.invite_survivor.addEventListener("click", () => this.invite_active_survivor());
     this.bind_touch();
   }
 
@@ -1221,8 +1334,12 @@ class Game {
     this.container_items.clear();
     this.looted.clear();
     this.killed.clear();
+    this.lost_survivors.clear();
     this.outdoor_enemies.clear();
     this.indoor_enemies.clear();
+    this.outdoor_survivors.clear();
+    this.companions = [];
+    this.active_survivor = null;
     this.stats = { kills: 0, found: 0, crafted: 0 };
     this.started = true;
     this.dead = false;
@@ -1247,7 +1364,13 @@ class Game {
     this.stats = { ...this.stats, ...(data.stats ?? {}) };
     this.looted = new Set(data.looted ?? []);
     this.killed = new Set(data.killed ?? []);
+    this.lost_survivors = new Set(data.lost_survivors ?? []);
     this.container_items = new Map(data.container_items ?? []);
+    this.companions = Array.isArray(data.companions) ? data.companions.map((survivor) => this.restore_survivor(survivor, true)) : [];
+    this.outdoor_survivors = new Map(Array.isArray(data.outdoor_survivors) ? data.outdoor_survivors.map(([key, survivors]) => [key, survivors.map((survivor) => this.restore_survivor(survivor, false))]) : []);
+    const unavailable_survivors = new Set([...this.lost_survivors, ...this.companions.map((survivor) => survivor.id)]);
+    for (const [key, survivors] of this.outdoor_survivors) this.outdoor_survivors.set(key, survivors.filter((survivor) => !unavailable_survivors.has(survivor.id)));
+    this.active_survivor = null;
     this.inside = null;
     if (data.inside?.building_id) {
       const building = this.find_building(data.inside.building_id);
@@ -1263,6 +1386,7 @@ class Game {
         }
       }
     }
+    this.place_companions();
     this.camera = { x: this.player.x, y: this.player.y, zoom: 1 };
     this.outdoor_enemies.clear();
     this.indoor_enemies.clear();
@@ -1299,6 +1423,9 @@ class Game {
       stats: this.stats,
       looted: [...this.looted],
       killed: [...this.killed].slice(-4000),
+      lost_survivors: [...this.lost_survivors],
+      companions: this.companions.map((survivor) => this.serialise_survivor(survivor)),
+      outdoor_survivors: [...this.outdoor_survivors.entries()].slice(-80).map(([key, survivors]) => [key, survivors.filter((survivor) => !survivor.recruited && !survivor.dead).map((survivor) => this.serialise_survivor(survivor))]),
       container_items: [...this.container_items.entries()],
     };
     try {
@@ -1340,6 +1467,7 @@ class Game {
   close_panels() {
     document.querySelectorAll(".overlay").forEach((panel) => panel.hidden = true);
     this.active_container = null;
+    this.active_survivor = null;
     this.paused = !this.started || this.dead;
   }
 
@@ -1365,6 +1493,7 @@ class Game {
     this.world_minutes += delta * .75;
     this.player.hurt_time = Math.max(0, this.player.hurt_time - delta);
     this.update_player(delta);
+    this.update_survivors(delta);
     this.update_enemies(delta);
     this.shots.forEach((shot) => shot.life -= delta);
     this.shots = this.shots.filter((shot) => shot.life > 0);
@@ -1423,6 +1552,275 @@ class Game {
     this.player.y = y;
   }
 
+  active_survivors() {
+    if (this.inside) return this.companions.filter((survivor) => !survivor.dead);
+    const companion_ids = new Set(this.companions.map((survivor) => survivor.id));
+    const locals = this.world.nearby(this.player.x, this.player.y, 1)
+      .flatMap((block) => this.survivors_outside(block))
+      .filter((survivor) => !survivor.recruited && !companion_ids.has(survivor.id));
+    return [...locals, ...this.companions.filter((survivor) => !survivor.dead)];
+  }
+
+  survivors_outside(block) {
+    if (this.outdoor_survivors.has(block.key)) {
+      const cached = this.outdoor_survivors.get(block.key);
+      this.outdoor_survivors.delete(block.key);
+      this.outdoor_survivors.set(block.key, cached);
+      return cached;
+    }
+    const random = rng(text_hash(`${SEED}:${block.key}:survivors`));
+    const chance = ["residential", "outskirts", "park"].includes(block.district) ? .3 : ["industrial", "medical"].includes(block.district) ? .18 : .23;
+    const count = random() < chance ? 1 + Number(random() < .12) : 0;
+    const survivors = [];
+    const unavailable = new Set([...this.companions.map((survivor) => survivor.id), ...this.lost_survivors]);
+    for (let index = 0; index < count; index += 1) {
+      const id = `survivor:out:${block.key}:${index}`;
+      if (unavailable.has(id)) continue;
+      let x = block.x * CELL + 96 + random() * (CELL - 192);
+      let y = block.y * CELL + 96 + random() * (CELL - 192);
+      let attempts = 0;
+      while (block.buildings.some((building) => in_rect(x, y, building, SURVIVOR_RADIUS + 18)) && attempts++ < 30) {
+        x = block.x * CELL + 96 + random() * (CELL - 192);
+        y = block.y * CELL + 96 + random() * (CELL - 192);
+      }
+      if (block.buildings.some((building) => in_rect(x, y, building, SURVIVOR_RADIUS + 18))) continue;
+      survivors.push(this.new_survivor(id, x, y, random, block.key));
+    }
+    this.outdoor_survivors.set(block.key, survivors);
+    if (this.outdoor_survivors.size > 120) this.outdoor_survivors.delete(this.outdoor_survivors.keys().next().value);
+    return survivors;
+  }
+
+  survivor_item(survivor, id) {
+    return survivor.items.find((item) => item.id === id) ?? null;
+  }
+
+  survivor_ammo(survivor, type) {
+    return survivor.items.reduce((total, item) => item.tags.includes(type) ? total + (item.stats.ammo ?? 0) : total, 0);
+  }
+
+  survivor_use_ammo(survivor, type) {
+    const box = survivor.items.find((item) => item.tags.includes(type) && (item.stats.ammo ?? 0) > 0);
+    if (!box) return false;
+    box.stats.ammo -= 1;
+    if (box.stats.ammo <= 0) survivor.items.splice(survivor.items.indexOf(box), 1);
+    return true;
+  }
+
+  survivor_weapon(survivor) {
+    let weapon = null;
+    for (const item of survivor.items) {
+      if (item.category !== "weapon" || (item.ammo_type && this.survivor_ammo(survivor, item.ammo_type) <= 0)) continue;
+      if (!weapon || (item.stats.attack ?? 0) > (weapon.stats.attack ?? 0)) weapon = item;
+    }
+    survivor.weapon_id = weapon?.id ?? null;
+    return weapon;
+  }
+
+  survivor_use_supplies(survivor) {
+    if (survivor.health < 58) {
+      const medical = survivor.items.filter((item) => item.tags.includes("medical")).sort((first, second) => (second.stats.heal ?? 0) - (first.stats.heal ?? 0))[0];
+      if (medical) {
+        survivor.health = clamp(survivor.health + (medical.stats.heal ?? 0), 0, 100);
+        survivor.items.splice(survivor.items.indexOf(medical), 1);
+        if (survivor.recruited) this.toast(`${survivor.name} used ${medical.name}`);
+      }
+    }
+    if (survivor.hunger >= 55) return;
+    const food = survivor.items
+      .filter((item) => item.tags.includes("food") && !item.tags.includes("inedible") && !item.tags.includes("poisoned"))
+      .sort((first, second) => (second.stats.food ?? 0) - (first.stats.food ?? 0))[0];
+    if (!food) return;
+    survivor.hunger = clamp(survivor.hunger + (food.stats.food ?? 0), 0, 100);
+    survivor.health = clamp(survivor.health + Math.max(0, food.stats.heal ?? 0), 0, 100);
+    survivor.items.splice(survivor.items.indexOf(food), 1);
+    if (survivor.recruited) this.toast(`${survivor.name} ate ${food.name}`);
+  }
+
+  update_survivors(delta) {
+    const enemies = this.active_enemies().filter((enemy) => !enemy.dead);
+    const survivors = this.active_survivors();
+    for (const survivor of survivors) {
+      if (survivor.dead) continue;
+      survivor.hurt_time = Math.max(0, survivor.hurt_time - delta);
+      survivor.attack = Math.max(0, survivor.attack - delta);
+      survivor.melee_time = Math.max(0, survivor.melee_time - delta);
+      survivor.hunger = clamp(survivor.hunger - .045 * delta, 0, 100);
+      this.survivor_use_supplies(survivor);
+      if (survivor.hunger <= 0) this.damage_survivor(survivor, 1.2 * delta, true);
+      if (survivor.dead) continue;
+      let target = null;
+      let nearest = SURVIVOR_NOTICE_RANGE ** 2;
+      for (const enemy of enemies) {
+        if (enemy.dead) continue;
+        const distance = distance_sq(survivor.x, survivor.y, enemy.x, enemy.y);
+        if (distance < nearest) {
+          nearest = distance;
+          target = enemy;
+        }
+      }
+      if (target) this.update_survivor_combat(survivor, target, delta);
+      else if (survivor.recruited) this.follow_group(survivor, this.companions.indexOf(survivor), delta);
+      else this.wander_survivor(survivor, delta);
+    }
+  }
+
+  update_survivor_combat(survivor, enemy, delta) {
+    if (enemy.dead) return;
+    const weapon = this.survivor_weapon(survivor);
+    const firearm = weapon?.tags.includes("firearm");
+    const dx = enemy.x - survivor.x;
+    const dy = enemy.y - survivor.y;
+    const distance = Math.hypot(dx, dy);
+    const direction_x = distance > .0001 ? dx / distance : Math.cos(survivor.angle);
+    const direction_y = distance > .0001 ? dy / distance : Math.sin(survivor.angle);
+    const weapon_range = weapon?.stats.range ?? 42;
+    const attack_distance = firearm ? Math.min(360, weapon_range * .62) : survivor.radius + enemy.radius + weapon_range + SURVIVOR_MELEE_REACH;
+    survivor.angle = Math.atan2(direction_y, direction_x);
+    enemy.alerted = true;
+    if (distance > attack_distance) {
+      const step = Math.min(distance - attack_distance, survivor.speed * delta);
+      this.move_survivor_toward(survivor, direction_x * step, direction_y * step);
+      return;
+    }
+    const contact_distance = survivor.radius + enemy.radius;
+    if (distance < contact_distance) {
+      const retreat = Math.min(attack_distance - distance, survivor.speed * delta);
+      this.move_survivor_toward(survivor, -direction_x * retreat, -direction_y * retreat);
+      return;
+    }
+    if (survivor.attack > 0) return;
+    const attack = weapon?.stats.attack ?? 6;
+    if (firearm) {
+      if (!weapon.ammo_type || !this.survivor_use_ammo(survivor, weapon.ammo_type)) return;
+      survivor.attack = weapon.tags.includes("shell") ? .72 : .48;
+      this.shots.push({ x1: survivor.x, y1: survivor.y, x2: enemy.x, y2: enemy.y, life: .08 });
+      this.hurt_enemy(enemy, weapon.tags.includes("shell") ? attack * .72 : attack, survivor);
+      this.alert_at(survivor.x, survivor.y, (weapon.stats.noise ?? 70) * 10);
+      return;
+    }
+    survivor.attack = weapon ? .62 : .78;
+    survivor.melee_time = .14;
+    this.swings.push({ x: survivor.x, y: survivor.y, angle: survivor.angle, range: weapon_range, life: .12 });
+    this.hurt_enemy(enemy, attack, survivor);
+    this.alert_at(survivor.x, survivor.y, (weapon?.stats.noise ?? 4) * 5);
+  }
+
+  follow_group(survivor, index, delta) {
+    const rank = Math.floor(index / 2) + 1;
+    const side = index % 2 === 0 ? -1 : 1;
+    const forward_x = Math.cos(this.player.angle);
+    const forward_y = Math.sin(this.player.angle);
+    const right_x = -forward_y;
+    const right_y = forward_x;
+    const target_x = this.player.x - forward_x * SURVIVOR_FOLLOW_DISTANCE * rank + right_x * 34 * side;
+    const target_y = this.player.y - forward_y * SURVIVOR_FOLLOW_DISTANCE * rank + right_y * 34 * side;
+    const dx = target_x - survivor.x;
+    const dy = target_y - survivor.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 16) return;
+    if (distance > 900) {
+      const position = this.find_survivor_space(target_x, target_y, survivor);
+      survivor.x = position.x;
+      survivor.y = position.y;
+      return;
+    }
+    survivor.angle = Math.atan2(dy, dx);
+    const speed = survivor.speed * (distance > 220 ? 1.65 : distance > 90 ? 1.25 : 1);
+    const step = Math.min(distance - 12, speed * delta);
+    const start_x = survivor.x;
+    const start_y = survivor.y;
+    this.move_survivor_toward(survivor, dx / distance * step, dy / distance * step);
+    if (distance_sq(start_x, start_y, survivor.x, survivor.y) < .01) survivor.stuck_time += delta;
+    else survivor.stuck_time = 0;
+    if (survivor.stuck_time > 2.25 && distance > 120) {
+      const position = this.find_survivor_space(target_x, target_y, survivor);
+      survivor.x = position.x;
+      survivor.y = position.y;
+      survivor.stuck_time = 0;
+    }
+  }
+
+  wander_survivor(survivor, delta) {
+    survivor.wander -= delta;
+    if (survivor.wander <= 0) {
+      survivor.wander = 1.5 + hash(text_hash(survivor.id), Math.floor(this.play_time)) * 4;
+      survivor.wander_angle += (hash(text_hash(survivor.id), Math.floor(this.play_time), 7) - .5) * 2.2;
+    }
+    survivor.angle = survivor.wander_angle;
+    this.move_survivor(survivor, Math.cos(survivor.wander_angle) * survivor.speed * .2 * delta, Math.sin(survivor.wander_angle) * survivor.speed * .2 * delta);
+  }
+
+  move_survivor(survivor, dx, dy) {
+    const x = survivor.x + dx;
+    const y = survivor.y + dy;
+    let blocked;
+    if (this.inside) {
+      const layout = this.layout();
+      blocked = x < 36 + survivor.radius || y < 36 + survivor.radius || x > layout.width - 36 - survivor.radius || y > layout.height - 36 - survivor.radius || layout.walls.some((wall) => circle_rect(x, y, survivor.radius, wall));
+    } else {
+      const limit = CITY_RADIUS * CELL;
+      blocked = Math.abs(x) > limit || Math.abs(y) > limit || this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, survivor.radius + 2, building)));
+    }
+    if (!blocked) {
+      survivor.x = x;
+      survivor.y = y;
+    } else {
+      survivor.wander_angle += Math.PI * .63;
+    }
+    return !blocked;
+  }
+
+  move_survivor_toward(survivor, dx, dy) {
+    if (this.move_survivor(survivor, dx, dy)) return true;
+    const horizontal_first = Math.abs(dx) >= Math.abs(dy);
+    if (horizontal_first) {
+      if (Math.abs(dx) > .001 && this.move_survivor(survivor, dx, 0)) return true;
+      if (Math.abs(dy) > .001 && this.move_survivor(survivor, 0, dy)) return true;
+    } else {
+      if (Math.abs(dy) > .001 && this.move_survivor(survivor, 0, dy)) return true;
+      if (Math.abs(dx) > .001 && this.move_survivor(survivor, dx, 0)) return true;
+    }
+    return false;
+  }
+
+  find_survivor_space(preferred_x, preferred_y, survivor = null) {
+    for (const radius of [0, 42, 68, 94, 126]) {
+      for (let index = 0; index < 12; index += 1) {
+        const angle = index / 12 * TAU;
+        const x = preferred_x + Math.cos(angle) * radius;
+        const y = preferred_y + Math.sin(angle) * radius;
+        if (this.survivor_point_open(x, y, survivor)) return { x, y };
+      }
+    }
+    return { x: this.player.x, y: this.player.y };
+  }
+
+  survivor_point_open(x, y, survivor = null) {
+    const spacing = SURVIVOR_RADIUS * 2 + 10;
+    if (distance_sq(x, y, this.player.x, this.player.y) < (SURVIVOR_RADIUS + PLAYER_RADIUS + 8) ** 2) return false;
+    if (this.companions.some((companion) => companion !== survivor && !companion.dead && distance_sq(x, y, companion.x, companion.y) < spacing ** 2)) return false;
+    if (this.inside) {
+      const layout = this.layout();
+      return this.world.interior_point_open(layout, x, y, SURVIVOR_RADIUS);
+    }
+    const limit = CITY_RADIUS * CELL;
+    return Math.abs(x) <= limit && Math.abs(y) <= limit && !this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, SURVIVOR_RADIUS + 2, building)));
+  }
+
+  place_companions() {
+    for (let index = 0; index < this.companions.length; index += 1) {
+      const survivor = this.companions[index];
+      const angle = this.player.angle + Math.PI + (index - (this.companions.length - 1) * .5) * .55;
+      const preferred_x = this.player.x + Math.cos(angle) * (62 + Math.floor(index / 3) * 34);
+      const preferred_y = this.player.y + Math.sin(angle) * (62 + Math.floor(index / 3) * 34);
+      const position = this.find_survivor_space(preferred_x, preferred_y, survivor);
+      survivor.x = position.x;
+      survivor.y = position.y;
+      survivor.angle = this.player.angle;
+    }
+  }
+
   active_enemies() {
     if (this.inside) return this.enemies_inside(this.inside.building, this.inside.floor);
     return this.world.nearby(this.player.x, this.player.y, 1).flatMap((block) => this.enemies_outside(block));
@@ -1475,18 +1873,31 @@ class Game {
   }
 
   update_enemies(delta) {
+    const survivors = this.active_survivors().filter((survivor) => !survivor.dead);
     for (const enemy of this.active_enemies()) {
       if (enemy.dead) continue;
       enemy.attack = Math.max(0, enemy.attack - delta);
       enemy.melee_time = Math.max(0, (enemy.melee_time ?? 0) - delta);
       enemy.wander -= delta;
-      const distance = Math.hypot(this.player.x - enemy.x, this.player.y - enemy.y);
+      let target = this.player;
+      let target_is_player = true;
+      let nearest = distance_sq(this.player.x, this.player.y, enemy.x, enemy.y);
+      for (const survivor of survivors) {
+        if (survivor.dead) continue;
+        const distance = distance_sq(survivor.x, survivor.y, enemy.x, enemy.y);
+        if (distance < nearest) {
+          nearest = distance;
+          target = survivor;
+          target_is_player = false;
+        }
+      }
+      const distance = Math.sqrt(nearest);
       if (distance < 420 || enemy.alerted) {
         enemy.alerted = distance < 760;
-        const direction_x = distance > .0001 ? (this.player.x - enemy.x) / distance : Math.cos(enemy.angle);
-        const direction_y = distance > .0001 ? (this.player.y - enemy.y) / distance : Math.sin(enemy.angle);
+        const direction_x = distance > .0001 ? (target.x - enemy.x) / distance : Math.cos(enemy.angle);
+        const direction_y = distance > .0001 ? (target.y - enemy.y) / distance : Math.sin(enemy.angle);
         const move_speed = enemy.speed * (enemy.variant === "runner" ? 1.35 : 1);
-        const contact_distance = enemy.radius + PLAYER_RADIUS;
+        const contact_distance = enemy.radius + (target_is_player ? PLAYER_RADIUS : target.radius);
         const melee_distance = contact_distance + INFECTED_MELEE_REACH;
         enemy.angle = Math.atan2(direction_y, direction_x);
         if (distance < contact_distance) {
@@ -1502,7 +1913,8 @@ class Game {
         if (attack_distance <= melee_distance + .001 && enemy.attack <= 0) {
           enemy.attack = enemy.variant === "runner" ? .8 : enemy.variant === "brute" ? 1.35 : 1.15;
           enemy.melee_time = INFECTED_ATTACK_TIME;
-          this.damage_player(enemy.variant === "brute" ? 18 : 9);
+          if (target_is_player) this.damage_player(enemy.variant === "brute" ? 18 : 9);
+          else this.damage_survivor(target, enemy.variant === "brute" ? 18 : 9);
         }
       } else {
         if (enemy.wander <= 0) {
@@ -1540,6 +1952,25 @@ class Game {
     this.sound.tone(75, .18, .07, "sawtooth", -25);
     this.update_hud();
     if (this.player.health <= 0) this.die();
+  }
+
+  damage_survivor(survivor, raw, continuous = false) {
+    if (survivor.dead || (!continuous && survivor.hurt_time > 0)) return;
+    const armor = survivor.items.reduce((total, item) => total + (item.category === "wearable" ? item.stats.armor ?? 0 : 0), 0);
+    const damage = continuous ? raw : Math.max(2, raw * (1 - Math.min(.68, armor / 100)));
+    survivor.health = clamp(survivor.health - damage, 0, 100);
+    if (!continuous) survivor.hurt_time = .55;
+    if (!continuous) this.blood.push({ x: survivor.x, y: survivor.y, radius: 4 + Math.random() * 7, inside: this.inside ? `${this.inside.building.id}:${this.inside.floor}` : null });
+    if (survivor.health > 0) return;
+    survivor.dead = true;
+    this.lost_survivors.add(survivor.id);
+    if (survivor.recruited) {
+      this.companions = this.companions.filter((companion) => companion !== survivor);
+      this.toast(`${survivor.name} was killed`, true);
+      this.update_hud();
+    }
+    if (this.active_survivor === survivor) this.close_panels();
+    this.save(true);
   }
 
   attack() {
@@ -1614,7 +2045,7 @@ class Game {
     return best;
   }
 
-  hurt_enemy(enemy, damage) {
+  hurt_enemy(enemy, damage, attacker = null) {
     enemy.health -= damage;
     enemy.alerted = true;
     this.blood.push({ x: enemy.x, y: enemy.y, radius: 4 + Math.random() * 7, inside: this.inside ? `${this.inside.building.id}:${this.inside.floor}` : null });
@@ -1623,12 +2054,25 @@ class Game {
     enemy.dead = true;
     this.killed.add(enemy.id);
     this.stats.kills += 1;
-    this.toast("infected neutralised");
-    if (hash(text_hash(enemy.id), 9) < .25) this.inventory.add(make_item(hash(text_hash(enemy.id), 10) < .5 ? "energy bar" : "cloth"));
+    if (attacker) {
+      attacker.kills += 1;
+      if (attacker.recruited) this.toast(`${attacker.name} neutralised an infected`);
+    } else {
+      this.toast("infected neutralised");
+    }
+    if (hash(text_hash(enemy.id), 9) < .25) {
+      const item = make_item(hash(text_hash(enemy.id), 10) < .5 ? "energy bar" : "cloth", `drop:${enemy.id}`);
+      if (attacker) attacker.items.push(item);
+      else this.inventory.add(item);
+    }
   }
 
   alert(radius) {
-    for (const enemy of this.active_enemies()) if (!enemy.dead && distance_sq(enemy.x, enemy.y, this.player.x, this.player.y) < radius ** 2) enemy.alerted = true;
+    this.alert_at(this.player.x, this.player.y, radius);
+  }
+
+  alert_at(x, y, radius) {
+    for (const enemy of this.active_enemies()) if (!enemy.dead && distance_sq(enemy.x, enemy.y, x, y) < radius ** 2) enemy.alerted = true;
   }
 
   find_interaction() {
@@ -1641,6 +2085,9 @@ class Game {
       for (const container of layout.containers) if (!this.looted.has(container.id)) choices.push({ type: "container", x: container.x + container.w * .5, y: container.y + container.h * .5, label: `search ${container.kind}`, container });
     } else {
       for (const block of this.world.nearby(this.player.x, this.player.y, 1)) for (const building of block.buildings) choices.push({ type: "enter", x: building.door_x, y: building.door_y, label: `enter ${building.name}`, building });
+    }
+    for (const survivor of this.active_survivors()) {
+      if (!survivor.dead) choices.push({ type: "talk", x: survivor.x, y: survivor.y, label: `talk to ${survivor.name}`, survivor });
     }
     let nearest = USE_RANGE ** 2;
     this.interaction = null;
@@ -1663,7 +2110,42 @@ class Game {
     else if (this.interaction.type === "exit") this.exit();
     else if (this.interaction.type === "up") this.change_floor(1);
     else if (this.interaction.type === "down") this.change_floor(-1);
+    else if (this.interaction.type === "talk") this.talk_to_survivor(this.interaction.survivor);
     else this.open_container(this.interaction.container);
+  }
+
+  talk_to_survivor(survivor) {
+    if (!survivor || survivor.dead) return;
+    this.active_survivor = survivor;
+    const weapon = this.survivor_weapon(survivor);
+    const supplies = survivor.items
+      .filter((item) => item !== weapon)
+      .map((item) => item.name)
+      .slice(0, 5);
+    dom.survivor_name.textContent = survivor.name;
+    dom.survivor_dialogue.textContent = survivor.recruited ? `we are moving together. i have your back.` : survivor.line;
+    dom.survivor_status.textContent = `${Math.ceil(survivor.health)} health · ${Math.ceil(survivor.hunger)} hunger · ${survivor.kills} infected killed`;
+    dom.survivor_loadout.innerHTML = `<div><span>weapon</span><strong>${safe(weapon?.name ?? "bare hands")}</strong></div><div><span>supplies</span><strong>${safe(supplies.join(", ") || "none")}</strong></div>`;
+    dom.invite_survivor.hidden = survivor.recruited;
+    dom.survivor_overlay.hidden = false;
+    this.paused = true;
+  }
+
+  invite_active_survivor() {
+    const survivor = this.active_survivor;
+    if (!survivor || survivor.dead || survivor.recruited) return;
+    const residents = this.outdoor_survivors.get(survivor.home_key);
+    if (residents) {
+      const index = residents.indexOf(survivor);
+      if (index >= 0) residents.splice(index, 1);
+    }
+    survivor.recruited = true;
+    this.companions.push(survivor);
+    this.place_companions();
+    this.toast(`${survivor.name} joined your group`);
+    this.close_panels();
+    this.update_hud();
+    this.save(true);
   }
 
   enter(building) {
@@ -1671,6 +2153,7 @@ class Game {
     const layout = this.layout();
     this.player.x = layout.entry.x;
     this.player.y = layout.entry.y;
+    this.place_companions();
     this.camera.x = this.player.x;
     this.camera.y = this.player.y;
     this.toast(`entered ${building.name}`);
@@ -1689,6 +2172,7 @@ class Game {
     }[building.road_side];
     this.player.x = building.door_x + direction.x * 48;
     this.player.y = building.door_y + direction.y * 48;
+    this.place_companions();
     this.camera.x = this.player.x;
     this.camera.y = this.player.y;
     this.toast("returned to street level");
@@ -1705,6 +2189,7 @@ class Game {
     const arrival = direction > 0 ? layout.down_arrival : layout.up_arrival;
     this.player.x = arrival?.x ?? layout.width * .5;
     this.player.y = arrival?.y ?? layout.height * .5;
+    this.place_companions();
     this.camera.x = this.player.x;
     this.camera.y = this.player.y;
     this.toast(this.floor_label(floor));
@@ -1787,6 +2272,7 @@ class Game {
     const food = this.inventory.items.find((item) => item.tags.includes("food") && !item.tags.includes("inedible"));
     dom.quick_food.textContent = food?.name ?? "no food";
     dom.ammo_value.textContent = weapon?.ammo_type ? `${this.inventory.ammo(weapon.ammo_type)} rounds` : "melee";
+    dom.group_status.textContent = this.companions.length ? `${this.companions.length} companion${this.companions.length === 1 ? "" : "s"}` : "travelling alone";
     const north = Math.round(-this.player.y * .16);
     const east = Math.round(this.player.x * .16);
     dom.coordinates.textContent = `${Math.abs(north)}m ${north >= 0 ? "n" : "s"} · ${Math.abs(east)}m ${east >= 0 ? "e" : "w"}`;
@@ -1815,6 +2301,7 @@ class Game {
     if (this.inside) this.draw_interior(context);
     else this.draw_city(context);
     this.draw_blood(context);
+    this.draw_survivors(context);
     this.draw_enemies(context);
     this.draw_effects(context);
     this.draw_player(context);
@@ -2063,6 +2550,49 @@ class Game {
     }
   }
 
+  draw_survivors(context) {
+    for (const survivor of this.active_survivors()) {
+      if (survivor.dead) {
+        context.fillStyle = "rgba(62,69,64,.76)";
+        context.beginPath();
+        context.ellipse(survivor.x, survivor.y, survivor.radius + 7, survivor.radius * .58, survivor.angle, 0, TAU);
+        context.fill();
+        continue;
+      }
+      context.save();
+      context.translate(survivor.x, survivor.y);
+      context.rotate(survivor.angle);
+      context.translate(Math.sin(clamp(survivor.melee_time / .14, 0, 1) * Math.PI) * 7, 0);
+      context.fillStyle = survivor.hurt_time ? "#d17f70" : survivor.color;
+      context.beginPath();
+      context.arc(0, 0, survivor.radius, 0, TAU);
+      context.fill();
+      context.fillStyle = "#303936";
+      context.beginPath();
+      context.arc(6, 0, 8, 0, TAU);
+      context.fill();
+      const weapon = this.survivor_item(survivor, survivor.weapon_id);
+      context.strokeStyle = weapon?.tags.includes("firearm") ? "#c2a979" : "#80745c";
+      context.lineWidth = weapon ? 4 : 2;
+      context.beginPath();
+      context.moveTo(8, 0);
+      context.lineTo(weapon?.tags.includes("firearm") ? 31 : 25, 0);
+      context.stroke();
+      context.restore();
+      context.font = "9px Courier New, monospace";
+      context.textAlign = "center";
+      context.textBaseline = "bottom";
+      context.fillStyle = survivor.recruited ? "#cfde93" : "rgba(232,235,218,.78)";
+      context.fillText(survivor.name.toUpperCase(), survivor.x, survivor.y - survivor.radius - 8);
+      if (survivor.recruited || survivor.hurt_time > 0) {
+        context.fillStyle = "rgba(10,13,11,.75)";
+        context.fillRect(survivor.x - 20, survivor.y + survivor.radius + 7, 40, 4);
+        context.fillStyle = survivor.health < 35 ? "#cf796f" : "#9fb276";
+        context.fillRect(survivor.x - 20, survivor.y + survivor.radius + 7, 40 * survivor.health / 100, 4);
+      }
+    }
+  }
+
   draw_enemies(context) {
     for (const enemy of this.active_enemies()) {
       if (enemy.dead) {
@@ -2215,6 +2745,15 @@ class Game {
       const y = height * .5 + local_y + (enemy.y - this.player.y) / CELL * scale;
       if (x > 0 && x < width && y > 0 && y < height) { context.fillStyle = "#b94d43"; context.fillRect(x - 1, y - 1, 3, 3); }
     }
+    for (const survivor of this.active_survivors()) {
+      if (survivor.dead) continue;
+      const x = width * .5 + local_x + (survivor.x - this.player.x) / CELL * scale;
+      const y = height * .5 + local_y + (survivor.y - this.player.y) / CELL * scale;
+      if (x > 0 && x < width && y > 0 && y < height) {
+        context.fillStyle = survivor.recruited ? "#cfde93" : "#86b7ad";
+        context.fillRect(x - 1.5, y - 1.5, 3, 3);
+      }
+    }
     context.save();
     context.translate(width * .5 + local_x, height * .5 + local_y);
     context.rotate(this.player.angle);
@@ -2244,6 +2783,10 @@ class Game {
     context.arc(offset_x + this.player.x * scale, offset_y + this.player.y * scale, 3.5, 0, TAU);
     context.fill();
     for (const enemy of this.active_enemies()) if (!enemy.dead) { context.fillStyle = "#b94d43"; context.fillRect(offset_x + enemy.x * scale - 1.5, offset_y + enemy.y * scale - 1.5, 3, 3); }
+    for (const survivor of this.active_survivors()) if (!survivor.dead) {
+      context.fillStyle = survivor.recruited ? "#cfde93" : "#86b7ad";
+      context.fillRect(offset_x + survivor.x * scale - 1.5, offset_y + survivor.y * scale - 1.5, 3, 3);
+    }
     context.strokeStyle = "rgba(207,222,147,.35)";
     context.strokeRect(.5, .5, width - 1, height - 1);
   }
@@ -2251,4 +2794,4 @@ class Game {
 
 const game = new Game();
 globalThis.city_of_nothing = game;
-globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, interior_template_catalog, interior_template_families, exterior_roof_patterns, infected_combat: { melee_reach: INFECTED_MELEE_REACH, attack_time: INFECTED_ATTACK_TIME, player_radius: PLAYER_RADIUS }, city_geometry: { cell: CELL, road: ROAD } };
+globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, interior_template_catalog, interior_template_families, exterior_roof_patterns, infected_combat: { melee_reach: INFECTED_MELEE_REACH, attack_time: INFECTED_ATTACK_TIME, player_radius: PLAYER_RADIUS }, survivor_ai: { radius: SURVIVOR_RADIUS, notice_range: SURVIVOR_NOTICE_RANGE, follow_distance: SURVIVOR_FOLLOW_DISTANCE, melee_reach: SURVIVOR_MELEE_REACH, names: survivor_names }, city_geometry: { cell: CELL, road: ROAD } };

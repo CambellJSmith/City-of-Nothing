@@ -183,7 +183,8 @@ button:focus-visible {
 #stamina_meter { background: var(--stamina); }
 #hunger_meter { background: var(--hunger); }
 
-.weapon_line {
+.weapon_line,
+.group_line {
   display: flex;
   justify-content: space-between;
   margin: 11px -14px 0;
@@ -194,7 +195,16 @@ button:focus-visible {
   text-transform: uppercase;
 }
 
-.weapon_line b {
+.group_line {
+  margin-top: 0;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.weapon_line b,
+.group_line b {
   color: var(--acid);
   font-weight: normal;
 }
@@ -682,6 +692,53 @@ button:focus-visible {
   min-height: 130px;
   padding: 14px;
   overflow: auto;
+}
+
+.survivor_conversation {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+#survivor_dialogue {
+  margin: 0;
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+#survivor_status {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+#survivor_loadout {
+  display: grid;
+  gap: 1px;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+#survivor_loadout div {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 12px;
+  padding: 10px;
+  background: #101311;
+  font-size: 8px;
+  line-height: 1.5;
+  text-transform: uppercase;
+}
+
+#survivor_loadout span {
+  color: var(--muted);
+}
+
+#survivor_loadout strong {
+  color: var(--ink);
+  font-weight: normal;
 }
 
 .loot_row {

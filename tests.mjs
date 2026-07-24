@@ -274,6 +274,9 @@ for (const id of new Set(dom_references)) assert.ok(ids.includes(id), `DOM refer
 for (const table of Object.values(api.loot_tables)) {
   for (const item_name of table) assert.ok(api.item_catalog[item_name], `loot item ${item_name} exists`);
 }
+assert.ok(api.survivor_ai.names.length >= 20, "survivors use a varied deterministic name pool");
+assert.match(html, /id="survivor_overlay"/, "survivor conversations have a dedicated interface");
+assert.match(html, /invite to join your group/, "survivors can be invited from conversation");
 const interior_templates = Object.values(api.interior_template_catalog).flat();
 assert.ok(interior_templates.length >= 350, "the interior catalog contains hundreds of base templates");
 assert.equal(new Set(interior_templates.map((template) => template.id)).size, interior_templates.length, "interior template ids are unique");
@@ -319,6 +322,30 @@ assert.ok(Math.hypot(melee_enemy.x - game.player.x, melee_enemy.y - game.player.
 assert.equal(infected_attacks, 1, "overlapping infected retreats before attacking");
 game.active_enemies = original_active_enemies;
 game.move_enemy = original_move_enemy;
+game.damage_player = original_damage_player;
+Object.assign(game.player, original_player_state);
+game.inside = original_inside;
+
+const original_active_survivors = game.active_survivors;
+const original_damage_survivor = game.damage_survivor;
+const target_survivor = game.new_survivor("survivor:test:target", 0, 0, () => .5, "test");
+const survivor_targeting_enemy = { id: "infected:test:survivor-target", x: 60, y: 0, angle: Math.PI, health: 50, speed: 60, radius: 18, attack: 0, melee_time: 0, wander: 0, wander_angle: 0, alerted: true, dead: false, variant: "walker" };
+let survivor_hits = 0;
+let player_hits = 0;
+game.player.x = 800;
+game.player.y = 0;
+game.active_survivors = () => [target_survivor];
+game.active_enemies = () => [survivor_targeting_enemy];
+game.move_enemy = (enemy, dx, dy) => { enemy.x += dx; enemy.y += dy; return true; };
+game.damage_survivor = (survivor) => { assert.equal(survivor, target_survivor); survivor_hits += 1; };
+game.damage_player = () => { player_hits += 1; };
+game.update_enemies(1);
+assert.equal(survivor_hits, 1, "infected attacks the nearest survivor");
+assert.equal(player_hits, 0, "infected does not ignore a closer human to chase the player");
+game.active_survivors = original_active_survivors;
+game.active_enemies = original_active_enemies;
+game.move_enemy = original_move_enemy;
+game.damage_survivor = original_damage_survivor;
 game.damage_player = original_damage_player;
 Object.assign(game.player, original_player_state);
 game.inside = original_inside;
@@ -398,6 +425,75 @@ const poison_soup = api.combine_items(api.make_item("gasoline"), api.make_item("
 assert.ok(poison_soup.tags.includes("poisoned"), "poisoned is inherited");
 assert.ok(poison_soup.tags.includes("inedible"), "inedible remains permanent");
 
+const supply_survivor = game.new_survivor("survivor:test:supplies", 0, 0, () => .5, "test");
+supply_survivor.items = [api.make_item("baseball bat"), api.make_item("energy bar"), api.make_item("medical kit")];
+supply_survivor.weapon_id = supply_survivor.items[0].id;
+supply_survivor.health = 30;
+supply_survivor.hunger = 20;
+game.survivor_use_supplies(supply_survivor);
+assert.ok(supply_survivor.health > 30, "survivors use medical items when injured");
+assert.ok(supply_survivor.hunger > 20, "survivors eat safe food when hungry");
+assert.equal(supply_survivor.items.length, 1, "consumed survivor supplies leave their inventory");
+
+const original_move_survivor = game.move_survivor;
+const original_hurt_enemy = game.hurt_enemy;
+const combat_survivor = game.new_survivor("survivor:test:combat", 0, 0, () => .5, "test");
+combat_survivor.items = [api.make_item("baseball bat", "survivor:test:bat")];
+combat_survivor.weapon_id = combat_survivor.items[0].id;
+combat_survivor.attack = 0;
+const combat_enemy = { id: "infected:test:npc-combat", x: 200, y: 0, radius: 18, health: 50, alerted: false, dead: false };
+let survivor_damage = 0;
+game.move_survivor = (survivor, dx, dy) => { survivor.x += dx; survivor.y += dy; return true; };
+game.hurt_enemy = (enemy, damage, attacker) => { assert.equal(attacker, combat_survivor); survivor_damage += damage; };
+game.update_survivor_combat(combat_survivor, combat_enemy, 10);
+assert.ok(combat_survivor.x > 0, "armed survivors approach infected");
+assert.equal(survivor_damage, 0, "survivors do not attack before reaching weapon range");
+game.update_survivor_combat(combat_survivor, combat_enemy, .1);
+assert.equal(survivor_damage, 20, "survivors attack with their selected melee weapon");
+
+const ranged_survivor = game.new_survivor("survivor:test:ranged", 0, 0, () => .5, "test");
+ranged_survivor.items = [api.make_item("9mm pistol", "survivor:test:pistol"), api.make_item("9mm rounds", "survivor:test:rounds")];
+ranged_survivor.weapon_id = ranged_survivor.items[0].id;
+ranged_survivor.attack = 0;
+survivor_damage = 0;
+game.hurt_enemy = (enemy, damage, attacker) => { assert.equal(attacker, ranged_survivor); survivor_damage += damage; };
+game.update_survivor_combat(ranged_survivor, combat_enemy, .1);
+assert.equal(survivor_damage, 38, "survivors fire usable ranged weapons");
+assert.equal(ranged_survivor.items[1].stats.ammo, 11, "survivor firearms consume ammunition");
+game.move_survivor = original_move_survivor;
+game.hurt_enemy = original_hurt_enemy;
+
+let survivor_block = null;
+let recruit = null;
+for (let y = -16; y <= 16 && !recruit; y += 1) {
+  for (let x = -16; x <= 16 && !recruit; x += 1) {
+    const block = game.world.block(x, y);
+    const survivors = game.survivors_outside(block);
+    if (survivors.length) {
+      survivor_block = block;
+      [recruit] = survivors;
+    }
+  }
+}
+assert.ok(recruit, "the city deterministically generates roaming human survivors");
+assert.equal(game.survivors_outside(survivor_block)[0], recruit, "generated survivors retain their state while their block is cached");
+assert.ok(recruit.items.some((item) => item.category === "weapon"), "roaming survivors carry weapons");
+assert.ok(recruit.items.some((item) => item.tags.includes("food")), "roaming survivors carry usable supplies");
+assert.ok(survivor_block.buildings.every((candidate) => !((recruit.x >= candidate.x && recruit.x <= candidate.x + candidate.w) && (recruit.y >= candidate.y && recruit.y <= candidate.y + candidate.h))), "survivors spawn outside solid buildings");
+game.inside = null;
+game.player.x = recruit.x + 24;
+game.player.y = recruit.y;
+elements.get("survivor_overlay").hidden = true;
+game.talk_to_survivor(recruit);
+assert.equal(elements.get("survivor_overlay").hidden, false, "talking opens the survivor conversation");
+assert.equal(elements.get("survivor_name").textContent, recruit.name, "conversation identifies the survivor");
+assert.equal(elements.get("invite_survivor").hidden, false, "an independent survivor can be invited");
+game.invite_active_survivor();
+assert.ok(game.companions.includes(recruit), "invited survivors join the player's group");
+assert.equal(recruit.recruited, true, "recruited state is retained on the survivor");
+assert.ok(!game.survivors_outside(survivor_block).includes(recruit), "a companion leaves their old roaming population");
+assert.equal(elements.get("group_status").textContent, "1 companion", "the HUD reports the travelling group");
+
 const first_block = game.world.nearby(-8000, 6000, 1).find((block) => block.buildings.length > 0);
 assert.ok(first_block, "starting area has enterable buildings");
 const repeated_block = game.world.block(first_block.x, first_block.y);
@@ -408,21 +504,30 @@ const building = first_block.buildings[0];
 game.enter(building);
 assert.equal(game.inside.building.id, building.id, "building entry works");
 assert.equal(game.inside.floor, 0, "entry begins on ground floor");
+assert.ok(point_is_walkable(game.layout(), game.companions[0].x, game.companions[0].y, api.survivor_ai.radius), "companions enter buildings in open floor space");
 assert.ok(game.layout().containers.length > 0, "interiors have searchable containers");
 assert.ok(game.layout().walls.length > 0 || ["warehouse", "factory"].includes(building.type), "interior layout is generated");
 if (building.floors > 1) {
   game.change_floor(1);
   assert.equal(game.inside.floor, 1, "upper-floor stairs work");
+  assert.ok(point_is_walkable(game.layout(), game.companions[0].x, game.companions[0].y, api.survivor_ai.radius), "companions safely travel between floors");
 }
+game.exit();
+assert.equal(game.inside, null, "building exit returns the group outdoors");
+assert.ok(Math.hypot(game.companions[0].x - game.player.x, game.companions[0].y - game.player.y) < 180, "companions regroup after leaving a building");
+game.enter(building);
 game.render();
 game.save(true);
 
 const saved = JSON.parse(storage.get("city_of_nothing_save_v1"));
 assert.ok(saved.inventory.items.length >= 5, "inventory persists");
 assert.equal(saved.inside.building_id, building.id, "interior position persists");
+assert.equal(saved.companions.length, 1, "recruited companions persist in saves");
 game.player.health = 2;
 game.continue();
 assert.equal(game.player.health, saved.player.health, "continue restores the saved player");
+assert.equal(game.companions.length, 1, "continue restores the player's group");
+assert.equal(game.companions[0].id, recruit.id, "continue restores the same recruited survivor");
 const blocked_save = JSON.parse(JSON.stringify(saved));
 const blocking_wall = game.layout().walls[0];
 blocked_save.inside.x = blocking_wall.x + blocking_wall.w * .5;
