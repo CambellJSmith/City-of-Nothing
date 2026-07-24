@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0a0d0b">
   <meta name="description" content="City of Nothing — a perfectly top-down open-city zombie survival game.">
   <title>City of Nothing</title>
-  <link rel="stylesheet" href="styles.css?v=20260724.6">
+  <link rel="stylesheet" href="styles.css?v=20260724.7">
 </head>
 <body>
   <main id="game_shell">
@@ -73,18 +73,7 @@
       </header>
       <div class="building_layout">
         <p>choose furniture, aim where it should stand, press <kbd>r</kbd> to rotate and <kbd>e</kbd> or click to place it.</p>
-        <div id="build_catalog" class="build_catalog">
-          <button data-build="cupboard" type="button"><strong>cupboard</strong><span>scrap metal + nails</span></button>
-          <button data-build="chest" type="button"><strong>chest</strong><span>scrap metal + duct tape</span></button>
-          <button data-build="shelf" type="button"><strong>shelf</strong><span>scrap metal + nails</span></button>
-          <button data-build="bed" type="button"><strong>bed</strong><span>2 cloth + duct tape</span></button>
-          <button data-build="cooker" type="button"><strong>cooker</strong><span>2 scrap metal + gasoline</span></button>
-          <button data-build="crafting_bench" type="button"><strong>crafting bench</strong><span>scrap metal + nails + duct tape</span></button>
-          <button data-build="turret" type="button"><strong>turret</strong><span>3 scrap metal + pistol + ammunition</span></button>
-          <button data-build="generator" type="button"><strong>generator</strong><span>2 scrap metal + gasoline + electronics</span></button>
-          <button data-build="campfire" type="button"><strong>campfire</strong><span>cloth + scrap metal</span></button>
-          <button data-build="radio_center" type="button"><strong>radio center</strong><span>2 scrap metal + 2 electronics + ammunition</span></button>
-        </div>
+        <div id="build_catalog" class="build_catalog"></div>
       </div>
     </section>
 
@@ -198,7 +187,7 @@
           <div><kbd>r</kbd><span>rotate furniture</span></div>
           <div><kbd>1</kbd><span>best weapon</span></div><div><kbd>2</kbd><span>eat food</span></div>
         </div>
-        <p>walk to marked doors to enter buildings. stairs connect floors. sewer grates on streets and in basements lead into one connected underground network. a radio center makes its building your team base.</p>
+        <p>walk to marked doors to enter buildings. stairs connect floors. sewer grates on streets and in basements lead into one connected underground network. build storage, comfort, workshops, defences, power and lights. a radio center makes its building your team base.</p>
         <button id="understood_button" class="primary wide" type="button">understood</button>
       </div>
     </section>
@@ -217,6 +206,6 @@
       <button id="touch_orders" type="button">orders</button>
     </div>
   </main>
-  <script src="game.js?v=20260724.6"></script>
+  <script src="game.js?v=20260724.7"></script>
 </body>
 </html>
