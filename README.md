@@ -16,7 +16,11 @@ The entire game is plain HTML, CSS, and JavaScript. There is no build step, pack
 - Autonomous human survivors who roam, manage supplies, fight infected, converse, and can join the player
 - Persistent companion groups that travel through streets, buildings, and floors in formation
 - Nearby group voice orders for attacking, following, looting containers, and holding ground
-- Free-form crafting that combines any two items
+- Furniture construction for cupboards, chests, shelves, beds, cookers, crafting benches, turrets, generators, campfires, and radio centers
+- Radio-designated team bases whose complete buildings remain loaded and active off screen
+- Radio assignments for exploring, collecting specific supplies, returning, and changing individual combat engagement
+- A fully connected city-wide sewer network with street and basement access, tunnels, chambers, infected, and cross-building travel
+- Fixed practical recipes available from player-built crafting benches
 - Persistent inventory, equipment, companions, encountered survivors, looted containers, defeated infected, location, time, and statistics
 - Desktop mouse and keyboard controls plus touch controls for coarse-pointer devices
 - Canvas rendering, a local minimap, a day/night overlay, synthesized sound, and a responsive HUD
@@ -41,10 +45,11 @@ Then open `http://localhost:8080/`.
 | `Shift` | Sprint |
 | Mouse | Aim |
 | Left click or `Space` | Attack |
-| `E` | Interact, talk, recruit, enter, exit, search, or use stairs |
+| `E` | Interact, talk, recruit, enter, exit, search, use stairs, or place furniture |
 | `Q` | Shout a tactical order to nearby companions |
 | `I` or `Tab` | Open or close inventory |
-| `C` | Open or close crafting |
+| `B` | Open furniture construction |
+| `R` | Rotate furniture while placing |
 | `1` | Equip the strongest carried weapon |
 | `2` | Eat the best carried edible food |
 | `Esc` | Close the active panel |
@@ -55,42 +60,43 @@ On touch devices, use the virtual movement stick and the **use**, **attack**, an
 
 | Path | Purpose |
 | --- | --- |
-| `index.html` | Canvas, HUD, menus, inventory, crafting, loot, guide, death screen, and touch-control markup |
+| `index.html` | Canvas, HUD, menus, inventory, construction, workbench, radio, loot, guide, death screen, and touch-control markup |
 | `styles.css` | Visual system, responsive layouts, overlays, HUD components, touch controls, and animation |
-| `game.js` | Data definitions, procedural generation, simulation, input, combat, inventory, crafting, persistence, audio, and rendering |
-| `tests.mjs` | Dependency-free Node regression tests, including exhaustive template connectivity, generated variety, and transition safety |
+| `game.js` | Data definitions, procedural generation, simulation, construction, bases, sewers, AI, combat, inventory, persistence, audio, and rendering |
+| `tests.mjs` | Dependency-free Node regression tests, including full-city sewer access and exhaustive template connectivity |
 | [`docs/architecture.md`](docs/architecture.md) | Runtime design, state ownership, generation, rendering, persistence, and performance |
-| [`docs/gameplay-reference.md`](docs/gameplay-reference.md) | Current mechanics, districts, combat, infected, loot, crafting, and saves |
+| [`docs/gameplay-reference.md`](docs/gameplay-reference.md) | Current mechanics, districts, combat, infected, loot, construction, bases, sewers, and saves |
 | [`docs/development.md`](docs/development.md) | Local workflow, extension points, debugging tools, validation, and deployment |
 
 ## technical overview
 
 `Game` owns the runtime and animation loop. It composes three focused systems:
 
-- `World` deterministically generates and caches blocks, buildings, interiors, furniture, containers, and district assignments.
-- `Inventory` owns items, equipment, consumption, crafting, and inventory UI rendering.
+- `World` deterministically generates and caches blocks, buildings, interiors, sewer access, furniture, containers, and district assignments.
+- `Inventory` owns items, equipment, consumption, and inventory UI rendering.
 - `Sound` creates short effects with the Web Audio API.
 
 `Game` also owns infected and human-survivor AI. Independent survivors roam nearby blocks, use personal inventories, fight with usable weapons, and can be recruited into a formation that follows the player across world transitions. Recruited survivors retain individual tactical orders and can divide nearby container-looting work without duplicating targets.
 
-Only the area around the player is simulated and rendered. Generated world data is recreated from stable IDs and the fixed seed, while player-made changes are recorded separately. This keeps the world large without storing every block or interior.
+Only the area around the player is normally simulated and rendered. A radio-designated base is the exception: all of its floors are pinned and continue simulating while the player is elsewhere. Sewer geometry is generated locally from a globally connected plan, so the underground network covers the city without being stored as one enormous map.
 
 See the [architecture documentation](docs/architecture.md) for the full runtime model.
 
 ## saves
 
-Progress is stored as JSON in `localStorage` under `city_of_nothing_save_v1`. Autosaves are rate-limited during play and forced at important transitions such as starting, crafting, entering a building, leaving a building, and closing the page.
+Progress is stored as JSON in `localStorage` under `city_of_nothing_save_v1`. Autosaves are rate-limited during play and forced at important transitions such as starting, building, issuing radio orders, entering a building, leaving a building, and closing the page.
 
 The save contains:
 
 - Player position and survival values
-- Current interior and floor
+- Current street, interior floor, or sewer position
 - Inventory and equipped item IDs
 - World time and play time
-- Kill, loot, and crafting statistics
+- Kill, loot, and construction statistics
 - Looted container IDs and remaining generated container contents
 - Defeated infected IDs
 - Recruited companions, their inventories, health, hunger, kill counts, and current orders
+- Built furniture, stored contents, the designated base, radio missions, and engagement rules
 - Encountered independent survivors and permanently lost survivor IDs
 
 Starting a new run removes the current save. Death does not overwrite it, so **return to last save** restores the most recent surviving state.

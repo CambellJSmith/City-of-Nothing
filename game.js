@@ -16,6 +16,9 @@ const SURVIVOR_LOOT_RANGE = 900;
 const SURVIVOR_LOOT_REACH = 58;
 const INFECTED_MELEE_REACH = 16;
 const INFECTED_ATTACK_TIME = .18;
+const SEWER_TUNNEL_WIDTH = 132;
+const SEWER_CHAMBER_SIZE = 260;
+const BUILD_REACH = 132;
 const USE_RANGE = 76;
 const TAU = Math.PI * 2;
 
@@ -55,6 +58,42 @@ const group_orders = {
   attack: { shout: "attack everything you can", hud: "attacking", description: "hunt every infected you can reach in the surrounding area" },
   loot: { shout: "loot all nearby containers", hud: "looting", description: "search nearby containers, divide the work, and carry what you find" },
   hold: { shout: "hold this position", hud: "holding", description: "hold your ground and fight infected that enter the area" },
+};
+
+const radio_missions = {
+  return: { name: "return", duration: 24, description: "return to the group" },
+  explore: { name: "explore", duration: 75, description: "scout unfamiliar streets and report back" },
+  food: { name: "collect food", duration: 95, description: "search for food and clean water" },
+  weapons: { name: "collect weapons", duration: 110, description: "search for weapons and ammunition" },
+  medicine: { name: "collect medicine", duration: 100, description: "search clinics and pharmacies" },
+  junk: { name: "collect junk", duration: 85, description: "salvage tools, parts and building materials" },
+};
+
+const engagement_rules = {
+  avoid: { name: "avoid combat", range: 120 },
+  defensive: { name: "defend yourself", range: 340 },
+  normal: { name: "fight nearby threats", range: SURVIVOR_NOTICE_RANGE },
+  aggressive: { name: "seek combat", range: SURVIVOR_ATTACK_RANGE },
+};
+
+const furniture_catalog = {
+  cupboard: { name: "cupboard", w: 64, h: 32, storage: true, cost: { "scrap metal": 1, nails: 1 } },
+  chest: { name: "chest", w: 58, h: 38, storage: true, cost: { "scrap metal": 1, "duct tape": 1 } },
+  shelf: { name: "shelf", w: 82, h: 28, storage: true, cost: { "scrap metal": 1, nails: 1 } },
+  bed: { name: "bed", w: 54, h: 92, action: "rest", cost: { cloth: 2, "duct tape": 1 } },
+  cooker: { name: "cooker", w: 54, h: 44, action: "cook", powered: true, cost: { "scrap metal": 2, gasoline: 1 } },
+  crafting_bench: { name: "crafting bench", w: 92, h: 46, action: "workbench", cost: { "scrap metal": 1, nails: 1, "duct tape": 1 } },
+  turret: { name: "turret", w: 52, h: 52, action: "turret", powered: true, cost: { "scrap metal": 3, "9mm pistol": 1, "9mm rounds": 1 } },
+  generator: { name: "generator", w: 68, h: 52, action: "generator", cost: { "scrap metal": 2, gasoline: 1, "electronic parts": 1 } },
+  campfire: { name: "campfire", w: 50, h: 50, action: "campfire", cost: { cloth: 1, "scrap metal": 1 } },
+  radio_center: { name: "radio center", w: 92, h: 52, action: "radio", cost: { "scrap metal": 2, "electronic parts": 2, "9mm rounds": 1 } },
+};
+
+const workbench_recipes = {
+  bandage: { name: "bandage", cost: { cloth: 2 }, result: "bandage" },
+  spiked_bat: { name: "spiked bat", cost: { "baseball bat": 1, nails: 1, "duct tape": 1 }, result: "spiked bat" },
+  "9mm_rounds": { name: "9mm rounds", cost: { "scrap metal": 1, nails: 1 }, result: "9mm rounds" },
+  electronic_parts: { name: "electronic parts", cost: { "flashlight": 1, "scrap metal": 1 }, result: "electronic parts" },
 };
 
 const building_names = {
@@ -183,17 +222,21 @@ const item_catalog = {
   "gasoline": { category: "material", stats: { attack: 6, weight: 1.2, durability: 1 }, tags: ["flammable", "poisoned", "material", "inedible"], description: "A sealed can of stale fuel." },
   "flashlight": { category: "tool", stats: { durability: 40, weight: 0.4 }, tags: ["tool", "light", "inedible"], description: "A narrow beam and a weak battery." },
   "medical kit": { category: "medical", stats: { heal: 36, weight: 0.8, durability: 1 }, tags: ["medical", "sealed", "inedible"], description: "Bandages, antiseptic and painkillers." },
+  "bandage": { category: "medical", stats: { heal: 16, weight: 0.1, durability: 1 }, tags: ["medical", "inedible"], description: "Clean cloth wrapped for emergency treatment." },
+  "spiked bat": { category: "weapon", stats: { attack: 34, range: 76, noise: 15, weight: 1.5, durability: 82 }, tags: ["melee", "blunt", "sharp", "inedible"], description: "A reinforced bat studded with nails." },
+  "cooked meat": { category: "food", stats: { food: 28, heal: 4, weight: 0.5, durability: 1 }, tags: ["food", "cooked"], description: "Questionable meat made safe over steady heat." },
+  "electronic parts": { category: "material", stats: { durability: 24, weight: 0.5 }, tags: ["electronics", "material", "inedible"], description: "Circuit boards, wire and reusable radio components." },
 };
 
 const loot_tables = {
   kitchen: ["apple", "canned soup", "bottled water", "energy bar", "kitchen knife", "spoiled meat", "cloth"],
   bedroom: ["cloth", "leather jacket", "work boots", "flashlight", "duct tape", "energy bar"],
-  office: ["bottled water", "energy bar", "flashlight", "cloth", "medical kit"],
+  office: ["bottled water", "energy bar", "flashlight", "cloth", "medical kit", "electronic parts"],
   shop: ["canned soup", "bottled water", "energy bar", "duct tape", "nails", "baseball bat"],
   medical: ["medical kit", "bottled water", "cloth", "energy bar", "spoiled meat"],
-  industrial: ["hammer", "crowbar", "duct tape", "nails", "scrap metal", "gasoline", "work boots"],
+  industrial: ["hammer", "crowbar", "duct tape", "nails", "scrap metal", "gasoline", "work boots", "electronic parts"],
   police: ["9mm pistol", "9mm rounds", "riot helmet", "ballistic vest", "shotgun shells", "medical kit"],
-  storage: ["duct tape", "nails", "scrap metal", "cloth", "flashlight", "gasoline"],
+  storage: ["duct tape", "nails", "scrap metal", "cloth", "flashlight", "gasoline", "electronic parts"],
 };
 
 const dom = Object.fromEntries([...document.querySelectorAll("[id]")].map((element) => [element.id, element]));
@@ -249,6 +292,10 @@ function circle_rect(x, y, radius, rect) {
   return distance_sq(x, y, nearest_x, nearest_y) < radius ** 2;
 }
 
+function rects_overlap(first, second, padding = 0) {
+  return first.x < second.x + second.w + padding && first.x + first.w + padding > second.x && first.y < second.y + second.h + padding && first.y + first.h + padding > second.y;
+}
+
 function make_item(name, id = null) {
   const template = item_catalog[name];
   if (!template) throw new Error(`Unknown item: ${name}`);
@@ -262,31 +309,6 @@ function make_item(name, id = null) {
     tags: [...template.tags],
     components: [name],
     description: template.description,
-  };
-}
-
-function combine_items(first, second, preview = false) {
-  const stats = {};
-  for (const key of new Set([...Object.keys(first.stats), ...Object.keys(second.stats)])) {
-    stats[key] = Number(((first.stats[key] ?? 0) + (second.stats[key] ?? 0)).toFixed(2));
-  }
-  const tags = [...new Set([...first.tags, ...second.tags])];
-  const components = [...first.components, ...second.components];
-  const weapon = first.category === "weapon" || second.category === "weapon" || (stats.attack ?? 0) > 7;
-  const wearable = first.category === "wearable" || second.category === "wearable";
-  const edible = tags.includes("food") && !tags.includes("inedible");
-  let category = weapon ? "weapon" : wearable ? "wearable" : edible ? "food" : "material";
-  if (tags.includes("medical") && !weapon && !wearable) category = "medical";
-  return {
-    id: preview ? "preview" : uid("crafted"),
-    name: `${first.name} ${second.name}`,
-    category,
-    slot: first.slot ?? second.slot ?? null,
-    ammo_type: tags.includes("firearm") ? (first.ammo_type ?? second.ammo_type) : null,
-    stats,
-    tags,
-    components,
-    description: `Built from ${components.join(", ")}. Every permanent property of its components remains.`,
   };
 }
 
@@ -325,14 +347,12 @@ class Inventory {
     this.equipment = {};
     this.selected = null;
     this.filter = "all";
-    this.craft_ids = [];
   }
 
   reset() {
     this.items = ["baseball bat", "apple", "canned soup", "cloth", "duct tape"].map((name) => make_item(name));
     this.equipment = { weapon: this.items[0].id, head: null, torso: null, legs: null, feet: null };
     this.selected = null;
-    this.craft_ids = [];
   }
 
   restore(data) {
@@ -365,7 +385,6 @@ class Inventory {
     if (index < 0) return null;
     const [item] = this.items.splice(index, 1);
     for (const slot of Object.keys(this.equipment)) if (this.equipment[slot] === id) this.equipment[slot] = null;
-    this.craft_ids = this.craft_ids.filter((item_id) => item_id !== id);
     return item;
   }
 
@@ -479,47 +498,6 @@ class Inventory {
     }));
   }
 
-  render_crafting() {
-    dom.craft_inventory.innerHTML = this.items.map((item) => this.card(item)).join("");
-    dom.craft_inventory.querySelectorAll("[data-item]").forEach((button) => {
-      button.classList.toggle("selected", this.craft_ids.includes(button.dataset.item));
-      button.addEventListener("click", () => {
-        const id = button.dataset.item;
-        if (this.craft_ids.includes(id)) this.craft_ids = this.craft_ids.filter((item_id) => item_id !== id);
-        else if (this.craft_ids.length < 2) this.craft_ids.push(id);
-        else this.craft_ids = [this.craft_ids[1], id];
-        this.render_crafting();
-      });
-    });
-    const first = this.get(this.craft_ids[0]);
-    const second = this.get(this.craft_ids[1]);
-    this.slot(dom.craft_slot_a, first, "first item");
-    this.slot(dom.craft_slot_b, second, "second item");
-    this.slot(dom.craft_result, first && second ? combine_items(first, second, true) : null, "combined item");
-    dom.craft_button.disabled = !(first && second);
-  }
-
-  slot(element, item, label) {
-    element.classList.toggle("filled", Boolean(item));
-    element.innerHTML = item ? `<span><strong>${safe(item.name)}</strong><small>${safe(item.category)} · ${(item.stats.weight ?? 0).toFixed(1)} kg</small></span>` : label;
-  }
-
-  craft() {
-    const first = this.get(this.craft_ids[0]);
-    const second = this.get(this.craft_ids[1]);
-    if (!first || !second || first.id === second.id) return;
-    const result = combine_items(first, second);
-    this.remove(first.id);
-    this.remove(second.id);
-    this.add(result, false);
-    this.craft_ids = [];
-    this.game.stats.crafted += 1;
-    this.game.toast(`crafted ${result.name}`);
-    this.game.sound.tone(440, 0.09, 0.03, "sine", 180);
-    this.render_crafting();
-    this.game.update_hud();
-    this.game.save(true);
-  }
 }
 
 class World {
@@ -527,6 +505,7 @@ class World {
     this.seed = seed;
     this.blocks = new Map();
     this.interiors = new Map();
+    this.pinned_interiors = new Set();
   }
 
   district(block_x, block_y) {
@@ -550,7 +529,7 @@ class World {
     const key = `${block_x},${block_y}`;
     if (this.blocks.has(key)) return this.blocks.get(key);
     const district = this.district(block_x, block_y);
-    const block = { key, x: block_x, y: block_y, district, buildings: this.make_buildings(block_x, block_y, district), trees: this.make_trees(block_x, block_y, district) };
+    const block = { key, x: block_x, y: block_y, district, buildings: this.make_buildings(block_x, block_y, district), trees: this.make_trees(block_x, block_y, district), grates: this.make_sewer_grates(block_x, block_y) };
     this.blocks.set(key, block);
     if (this.blocks.size > 180) this.blocks.delete(this.blocks.keys().next().value);
     return block;
@@ -656,6 +635,78 @@ class World {
     return Array.from({ length: count }, () => ({ x: block_x * CELL + ROAD * .5 + 40 + random() * (CELL - ROAD - 80), y: block_y * CELL + ROAD * .5 + 40 + random() * (CELL - ROAD - 80), radius: 13 + random() * 15 }));
   }
 
+  make_sewer_grates(block_x, block_y) {
+    const random = rng(text_hash(`${this.seed}:${block_x}:${block_y}:sewer-grates`));
+    return [
+      {
+        id: `sewer:street:${block_x}:${block_y}:west`,
+        type: "street",
+        x: block_x * CELL + 18,
+        y: block_y * CELL + 250 + random() * 500,
+      },
+      {
+        id: `sewer:street:${block_x}:${block_y}:north`,
+        type: "street",
+        x: block_x * CELL + 250 + random() * 500,
+        y: block_y * CELL + 18,
+      },
+    ].map((grate) => ({ ...grate, sewer_x: grate.x, sewer_y: grate.y }));
+  }
+
+  sewer_point_open(x, y, radius = 0) {
+    const limit = CITY_RADIUS * CELL;
+    if (Math.abs(x) > limit - radius || Math.abs(y) > limit - radius) return false;
+    const half = SEWER_TUNNEL_WIDTH * .5 - radius;
+    if (half <= 0) return false;
+    const local_x = ((x % CELL) + CELL) % CELL;
+    const local_y = ((y % CELL) + CELL) % CELL;
+    const boundary_x = Math.min(local_x, CELL - local_x);
+    const boundary_y = Math.min(local_y, CELL - local_y);
+    const center_x = Math.abs(local_x - CELL * .5);
+    const center_y = Math.abs(local_y - CELL * .5);
+    const chamber_half = SEWER_CHAMBER_SIZE * .5 - radius;
+    return boundary_x <= half || boundary_y <= half || center_x <= half || center_y <= half || (center_x <= chamber_half && center_y <= chamber_half);
+  }
+
+  basement_sewer_access(building) {
+    if (!building?.basements) return null;
+    const offsets = [[-72, -72], [72, -72], [-72, 72], [72, 72]];
+    const offset = offsets[building.index % offsets.length];
+    return {
+      id: `sewer:basement:${building.id}`,
+      type: "basement",
+      building,
+      floor: -building.basements,
+      sewer_x: (building.block_x + .5) * CELL + offset[0],
+      sewer_y: (building.block_y + .5) * CELL + offset[1],
+    };
+  }
+
+  sewer_accesses_near(x, y, range = 1) {
+    const accesses = [];
+    for (const block of this.nearby(x, y, range)) {
+      accesses.push(...block.grates);
+      for (const building of block.buildings) {
+        const access = this.basement_sewer_access(building);
+        if (access) accesses.push(access);
+      }
+    }
+    return accesses;
+  }
+
+  pin_building(building) {
+    for (let floor = -building.basements; floor < building.floors; floor += 1) {
+      const key = `${building.id}:${floor}`;
+      this.pinned_interiors.add(key);
+      this.interior(building, floor);
+    }
+  }
+
+  unpin_building(building) {
+    if (!building) return;
+    for (let floor = -building.basements; floor < building.floors; floor += 1) this.pinned_interiors.delete(`${building.id}:${floor}`);
+  }
+
   nearby(x, y, range = 1) {
     const center_x = Math.floor(x / CELL);
     const center_y = Math.floor(y / CELL);
@@ -695,11 +746,21 @@ class World {
     };
     this.make_interior_floor_plan(layout, building.type, template, random);
     this.rotate_interior_layout(layout, building.quarter_turns);
+    if (floor < 0) {
+      const room = layout.rooms[Math.floor(hash(building.seed, floor, 712) * layout.rooms.length)] ?? layout.rooms[0];
+      layout.sewer_grate = room ? { x: room.x + room.w * .5, y: room.y + room.h * .5 } : { x: layout.width * .5, y: layout.height * .5 };
+    } else {
+      layout.sewer_grate = null;
+    }
     for (const point of [layout.entry, layout.exit, layout.up, layout.down]) if (point) layout.clearances.push({ x: point.x, y: point.y, radius: point === layout.exit ? 50 : 76 });
+    if (layout.sewer_grate) layout.clearances.push({ x: layout.sewer_grate.x, y: layout.sewer_grate.y, radius: 72 });
     for (const door of layout.doors) layout.clearances.push({ x: door.x, y: door.y, radius: Math.max(60, door.width * .5) });
     this.populate_interior(layout, building, floor, random);
     this.interiors.set(key, layout);
-    if (this.interiors.size > 120) this.interiors.delete(this.interiors.keys().next().value);
+    if (this.interiors.size > 120) {
+      const removable = [...this.interiors.keys()].find((candidate) => !this.pinned_interiors.has(candidate));
+      if (removable) this.interiors.delete(removable);
+    }
     return layout;
   }
 
@@ -1117,19 +1178,28 @@ class Game {
     this.hunger_timer = 0;
     this.interaction = null;
     this.inside = null;
+    this.sewer = false;
     this.active_container = null;
+    this.active_container_object = null;
     this.container_items = new Map();
+    this.built_furniture = new Map();
+    this.base = null;
+    this.build_type = null;
+    this.build_rotation = 0;
+    this.active_radio_member_id = null;
+    this.base_tick = 0;
     this.looted = new Set();
     this.killed = new Set();
     this.lost_survivors = new Set();
     this.outdoor_enemies = new Map();
     this.indoor_enemies = new Map();
+    this.sewer_enemies = new Map();
     this.outdoor_survivors = new Map();
     this.companions = [];
     this.active_survivor = null;
     this.command_text = "";
     this.command_time = 0;
-    this.stats = { kills: 0, found: 0, crafted: 0 };
+    this.stats = { kills: 0, found: 0, built: 0 };
     this.shots = [];
     this.swings = [];
     this.blood = [];
@@ -1186,6 +1256,11 @@ class Game {
       order_x: x,
       order_y: y,
       order_target_id: null,
+      engagement: "normal",
+      radio_mission: null,
+      radio_time: 0,
+      radio_runs: 0,
+      remote: false,
     };
   }
 
@@ -1195,6 +1270,8 @@ class Game {
     const order = Object.hasOwn(group_orders, data?.order) ? data.order : "follow";
     const order_x = Number(data?.order_x);
     const order_y = Number(data?.order_y);
+    const engagement = Object.hasOwn(engagement_rules, data?.engagement) ? data.engagement : "normal";
+    const radio_mission = Object.hasOwn(radio_missions, data?.radio_mission) ? data.radio_mission : null;
     const survivor = {
       id: data?.id ?? uid("survivor"),
       name: data?.name ?? "survivor",
@@ -1223,6 +1300,11 @@ class Game {
       order_x: Number.isFinite(order_x) ? order_x : (Number.isFinite(saved_x) ? saved_x : this.player.x),
       order_y: Number.isFinite(order_y) ? order_y : (Number.isFinite(saved_y) ? saved_y : this.player.y),
       order_target_id: typeof data?.order_target_id === "string" ? data.order_target_id : null,
+      engagement,
+      radio_mission,
+      radio_time: Math.max(0, Number(data?.radio_time) || 0),
+      radio_runs: Math.max(0, Number(data?.radio_runs) || 0),
+      remote: Boolean(data?.remote && radio_mission),
     };
     if (!survivor.items.some((item) => item.id === survivor.weapon_id)) survivor.weapon_id = null;
     return survivor;
@@ -1249,6 +1331,11 @@ class Game {
       order_x: survivor.order_x,
       order_y: survivor.order_y,
       order_target_id: survivor.order_target_id,
+      engagement: survivor.engagement,
+      radio_mission: survivor.radio_mission,
+      radio_time: survivor.radio_time,
+      radio_runs: survivor.radio_runs,
+      remote: survivor.remote,
     };
   }
 
@@ -1263,7 +1350,8 @@ class Game {
       if (event.button !== 0) return;
       this.mouse.down = true;
       this.sound.start();
-      this.attack();
+      if (this.build_type) this.place_built_furniture();
+      else this.attack();
     });
     globalThis.addEventListener("pointerup", () => this.mouse.down = false);
     this.canvas.addEventListener("contextmenu", (event) => event.preventDefault());
@@ -1280,8 +1368,17 @@ class Game {
       this.inventory.render_inventory();
     }));
     document.querySelectorAll("[data-quick]").forEach((button) => button.addEventListener("click", () => this.quick(button.dataset.quick)));
-    dom.clear_craft.addEventListener("click", () => { this.inventory.craft_ids = []; this.inventory.render_crafting(); });
-    dom.craft_button.addEventListener("click", () => this.inventory.craft());
+    dom.build_catalog.querySelectorAll("[data-build]").forEach((button) => button.addEventListener("click", () => this.select_build_type(button.dataset.build)));
+    dom.workbench_recipes.querySelectorAll("[data-recipe]").forEach((button) => button.addEventListener("click", () => this.craft_recipe(button.dataset.recipe)));
+    dom.radio_members.addEventListener("click", (event) => {
+      const id = event.target?.dataset?.radioMember;
+      if (id) {
+        this.active_radio_member_id = id;
+        this.render_radio_center();
+      }
+    });
+    dom.radio_missions.querySelectorAll("[data-radio-mission]").forEach((button) => button.addEventListener("click", () => this.issue_radio_mission(button.dataset.radioMission)));
+    dom.radio_engagement.querySelectorAll("[data-radio-engagement]").forEach((button) => button.addEventListener("click", () => this.set_radio_engagement(button.dataset.radioEngagement)));
     dom.take_all.addEventListener("click", () => this.take_all());
     dom.invite_survivor.addEventListener("click", () => this.invite_active_survivor());
     dom.order_follow.addEventListener("click", () => this.issue_group_order("follow"));
@@ -1316,16 +1413,27 @@ class Game {
 
   key_down(event) {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab"].includes(event.code)) event.preventDefault();
-    if (event.repeat && ["KeyE", "KeyI", "KeyC", "KeyQ", "Escape", "Digit1", "Digit2"].includes(event.code)) return;
+    if (event.repeat && ["KeyE", "KeyI", "KeyB", "KeyQ", "KeyR", "Escape", "Digit1", "Digit2"].includes(event.code)) return;
     this.keys.add(event.code);
-    if (event.code === "KeyE") this.use();
+    if (event.code === "KeyE") {
+      if (this.build_type) this.place_built_furniture();
+      else this.use();
+    }
     else if (event.code === "KeyI" || event.code === "Tab") this.toggle_inventory();
-    else if (event.code === "KeyC") this.toggle_crafting();
+    else if (event.code === "KeyB") this.toggle_building();
     else if (event.code === "KeyQ") this.toggle_group_orders();
+    else if (event.code === "KeyR" && this.build_type) this.build_rotation = (this.build_rotation + 1) % 4;
     else if (event.code === "Digit1") this.inventory.best_weapon();
     else if (event.code === "Digit2") this.inventory.best_food();
     else if (event.code === "Space") this.attack();
-    else if (event.code === "Escape") this.close_panels();
+    else if (event.code === "Escape") {
+      if (this.build_type) {
+        this.build_type = null;
+        this.toast("building cancelled");
+      } else {
+        this.close_panels();
+      }
+    }
   }
 
   pointer_move(event) {
@@ -1341,7 +1449,7 @@ class Game {
     if (action === "weapon") this.inventory.best_weapon();
     else if (action === "food") this.inventory.best_food();
     else if (action === "inventory") this.toggle_inventory();
-    else if (action === "crafting") this.toggle_crafting();
+    else if (action === "building") this.toggle_building();
     else this.toggle_group_orders();
   }
 
@@ -1366,20 +1474,29 @@ class Game {
     this.world_minutes = 7.7 * 60;
     this.play_time = 0;
     this.last_save = 0;
+    if (this.base) this.world.unpin_building(this.find_building(this.base.building_id));
     this.inside = null;
+    this.sewer = false;
     this.active_container = null;
+    this.active_container_object = null;
     this.container_items.clear();
+    this.built_furniture.clear();
+    this.base = null;
+    this.build_type = null;
+    this.active_radio_member_id = null;
+    this.base_tick = 0;
     this.looted.clear();
     this.killed.clear();
     this.lost_survivors.clear();
     this.outdoor_enemies.clear();
     this.indoor_enemies.clear();
+    this.sewer_enemies.clear();
     this.outdoor_survivors.clear();
     this.companions = [];
     this.active_survivor = null;
     this.command_text = "";
     this.command_time = 0;
-    this.stats = { kills: 0, found: 0, crafted: 0 };
+    this.stats = { kills: 0, found: 0, built: 0 };
     this.started = true;
     this.dead = false;
     this.paused = false;
@@ -1395,16 +1512,19 @@ class Game {
   continue() {
     const data = this.read_save();
     if (!data) return this.begin();
+    if (this.base) this.world.unpin_building(this.find_building(this.base.building_id));
     this.player = { ...this.new_player(), ...(data.player ?? {}) };
     this.player.health = Math.max(1, this.player.health);
     this.inventory.restore(data.inventory);
     this.world_minutes = data.world_minutes ?? this.world_minutes;
     this.play_time = data.play_time ?? 0;
-    this.stats = { ...this.stats, ...(data.stats ?? {}) };
+    this.stats = { kills: 0, found: 0, built: 0, ...(data.stats ?? {}) };
     this.looted = new Set(data.looted ?? []);
     this.killed = new Set(data.killed ?? []);
     this.lost_survivors = new Set(data.lost_survivors ?? []);
     this.container_items = new Map(data.container_items ?? []);
+    this.built_furniture = new Map(Array.isArray(data.built_furniture) ? data.built_furniture : []);
+    this.base = data.base?.building_id ? { building_id: data.base.building_id, radio_id: data.base.radio_id ?? null } : null;
     this.companions = Array.isArray(data.companions) ? data.companions.map((survivor) => this.restore_survivor(survivor, true)) : [];
     this.outdoor_survivors = new Map(Array.isArray(data.outdoor_survivors) ? data.outdoor_survivors.map(([key, survivors]) => [key, survivors.map((survivor) => this.restore_survivor(survivor, false))]) : []);
     const unavailable_survivors = new Set([...this.lost_survivors, ...this.companions.map((survivor) => survivor.id)]);
@@ -1413,7 +1533,11 @@ class Game {
     this.command_text = "";
     this.command_time = 0;
     this.inside = null;
-    if (data.inside?.building_id) {
+    this.sewer = Boolean(data.sewer);
+    if (this.sewer) {
+      this.player.x = Number(data.sewer.x) || this.player.x;
+      this.player.y = Number(data.sewer.y) || this.player.y;
+    } else if (data.inside?.building_id) {
       const building = this.find_building(data.inside.building_id);
       if (building) {
         this.inside = { building, floor: data.inside.floor ?? 0 };
@@ -1427,10 +1551,20 @@ class Game {
         }
       }
     }
+    if (this.base) {
+      const base_building = this.find_building(this.base.building_id);
+      if (base_building) {
+        this.world.pin_building(base_building);
+        for (let floor = -base_building.basements; floor < base_building.floors; floor += 1) this.enemies_inside(base_building, floor);
+      } else {
+        this.base = null;
+      }
+    }
     this.place_companions();
     this.camera = { x: this.player.x, y: this.player.y, zoom: 1 };
     this.outdoor_enemies.clear();
-    this.indoor_enemies.clear();
+    for (const key of [...this.indoor_enemies.keys()]) if (!key.startsWith(`${this.base?.building_id}:`)) this.indoor_enemies.delete(key);
+    this.sewer_enemies.clear();
     this.started = true;
     this.dead = false;
     this.paused = false;
@@ -1454,10 +1588,12 @@ class Game {
   save(force = false) {
     if (!this.started || this.dead || (!force && this.play_time - this.last_save < 8)) return;
     const inside = this.inside ? { building_id: this.inside.building.id, floor: this.inside.floor, x: this.player.x, y: this.player.y } : null;
+    const sewer = this.sewer ? { x: this.player.x, y: this.player.y } : null;
     const data = {
       version: 1,
       player: { ...this.player },
       inside,
+      sewer,
       inventory: { items: this.inventory.items, equipment: this.inventory.equipment },
       world_minutes: this.world_minutes,
       play_time: this.play_time,
@@ -1468,6 +1604,8 @@ class Game {
       companions: this.companions.map((survivor) => this.serialise_survivor(survivor)),
       outdoor_survivors: [...this.outdoor_survivors.entries()].slice(-80).map(([key, survivors]) => [key, survivors.filter((survivor) => !survivor.recruited && !survivor.dead).map((survivor) => this.serialise_survivor(survivor))]),
       container_items: [...this.container_items.entries()],
+      built_furniture: [...this.built_furniture.entries()],
+      base: this.base,
     };
     try {
       localStorage.setItem(SAVE_KEY, JSON.stringify(data));
@@ -1494,15 +1632,182 @@ class Game {
     }
   }
 
-  toggle_crafting() {
+  toggle_building() {
     if (!this.started || this.dead) return;
-    const open = dom.crafting_overlay.hidden;
+    const open = dom.building_overlay.hidden;
     this.close_panels();
     if (open) {
-      dom.crafting_overlay.hidden = false;
-      this.inventory.render_crafting();
+      this.render_build_catalog();
+      dom.building_overlay.hidden = false;
       this.paused = true;
     }
+  }
+
+  render_build_catalog() {
+    dom.build_catalog.querySelectorAll("[data-build]").forEach((button) => {
+      const definition = furniture_catalog[button.dataset.build];
+      if (!definition) return;
+      button.disabled = !this.can_afford(definition.cost) || (!this.inside && button.dataset.build !== "campfire") || this.sewer;
+    });
+  }
+
+  select_build_type(type) {
+    const definition = furniture_catalog[type];
+    if (!definition) return;
+    if (this.sewer || (!this.inside && type !== "campfire")) {
+      this.toast(type === "campfire" ? "campfires cannot be built in the sewer" : "that furniture must be built inside a building", true);
+      return;
+    }
+    if (!this.can_afford(definition.cost)) {
+      this.toast(`not enough materials for ${definition.name}`, true);
+      return;
+    }
+    this.close_panels();
+    this.build_type = type;
+    this.build_rotation = 0;
+    this.paused = false;
+    this.toast(`placing ${definition.name} · r rotates · e places · esc cancels`);
+  }
+
+  current_location_key() {
+    if (this.sewer) return `sewer:${Math.floor(this.player.x / CELL)},${Math.floor(this.player.y / CELL)}`;
+    if (this.inside) return `${this.inside.building.id}:${this.inside.floor}`;
+    return `street:${Math.floor(this.player.x / CELL)},${Math.floor(this.player.y / CELL)}`;
+  }
+
+  location_marker_key() {
+    if (this.sewer) return "sewer";
+    return this.inside ? `${this.inside.building.id}:${this.inside.floor}` : null;
+  }
+
+  built_at(key = this.current_location_key()) {
+    if (!this.built_furniture.has(key)) this.built_furniture.set(key, []);
+    return this.built_furniture.get(key);
+  }
+
+  item_count(name) {
+    return this.inventory.items.reduce((total, item) => total + Number(item.name === name), 0);
+  }
+
+  can_afford(cost) {
+    return Object.entries(cost).every(([name, count]) => this.item_count(name) >= count);
+  }
+
+  consume_cost(cost) {
+    if (!this.can_afford(cost)) return false;
+    for (const [name, count] of Object.entries(cost)) {
+      for (let index = 0; index < count; index += 1) {
+        const item = this.inventory.items.find((candidate) => candidate.name === name);
+        if (item) this.inventory.remove(item.id);
+      }
+    }
+    return true;
+  }
+
+  build_preview() {
+    const definition = furniture_catalog[this.build_type];
+    if (!definition) return null;
+    const rotated = this.build_rotation % 2 === 1;
+    const w = rotated ? definition.h : definition.w;
+    const h = rotated ? definition.w : definition.h;
+    const center_x = this.player.x + Math.cos(this.player.angle) * BUILD_REACH;
+    const center_y = this.player.y + Math.sin(this.player.angle) * BUILD_REACH;
+    return { x: center_x - w * .5, y: center_y - h * .5, w, h, rotation: this.build_rotation };
+  }
+
+  can_place_built_furniture(preview) {
+    if (!preview || this.sewer) return false;
+    if (circle_rect(this.player.x, this.player.y, PLAYER_RADIUS + 12, preview)) return false;
+    if (this.inside) {
+      const layout = this.layout();
+      if (preview.x < 40 || preview.y < 40 || preview.x + preview.w > layout.width - 40 || preview.y + preview.h > layout.height - 40) return false;
+      if (layout.walls.some((wall) => rects_overlap(preview, wall, 12))) return false;
+      if (layout.furniture.some((item) => rects_overlap(preview, item, 12))) return false;
+      if (layout.passages.some((passage) => rects_overlap(preview, passage, 14))) return false;
+      if (layout.clearances.some((clearance) => circle_rect(clearance.x, clearance.y, clearance.radius + 18, preview))) return false;
+    } else {
+      if (this.build_type !== "campfire") return false;
+      if (this.world.nearby(preview.x + preview.w * .5, preview.y + preview.h * .5, 1).some((block) => block.buildings.some((building) => rects_overlap(preview, building, 20)))) return false;
+    }
+    if (this.built_at().some((item) => rects_overlap(preview, item, 14))) return false;
+    return !this.companions.some((survivor) => !survivor.dead && !survivor.remote && circle_rect(survivor.x, survivor.y, survivor.radius + 8, preview));
+  }
+
+  place_built_furniture() {
+    const definition = furniture_catalog[this.build_type];
+    const preview = this.build_preview();
+    if (!definition || !this.can_place_built_furniture(preview)) {
+      if (definition) this.toast("that space is blocked", true);
+      return false;
+    }
+    if (!this.consume_cost(definition.cost)) {
+      this.toast(`not enough materials for ${definition.name}`, true);
+      this.build_type = null;
+      return false;
+    }
+    const key = this.current_location_key();
+    const item = {
+      ...preview,
+      id: uid("furniture"),
+      kind: definition.name,
+      type: this.build_type,
+      built: true,
+      storage: Boolean(definition.storage),
+      active: true,
+      cooldown: 0,
+      location_key: key,
+    };
+    this.built_at(key).push(item);
+    if (item.storage) this.container_items.set(item.id, []);
+    if (item.type === "radio_center" && this.inside) this.designate_base(this.inside.building, item);
+    this.stats.built += 1;
+    this.build_type = null;
+    this.sound.tone(360, .09, .035, "square", 130);
+    this.toast(`built ${definition.name}`);
+    this.update_hud();
+    this.save(true);
+    return item;
+  }
+
+  designate_base(building, radio) {
+    const old_building = this.base ? this.find_building(this.base.building_id) : null;
+    if (old_building?.id !== building.id) this.world.unpin_building(old_building);
+    this.base = { building_id: building.id, radio_id: radio.id };
+    this.world.pin_building(building);
+    for (let floor = -building.basements; floor < building.floors; floor += 1) this.enemies_inside(building, floor);
+    this.toast(`${building.name} is now your team's base`);
+  }
+
+  open_workbench() {
+    this.close_panels();
+    this.render_workbench();
+    dom.workbench_overlay.hidden = false;
+    this.paused = true;
+  }
+
+  render_workbench() {
+    const available = Object.values(workbench_recipes).filter((recipe) => this.can_afford(recipe.cost)).length;
+    dom.workbench_status.textContent = `${available} of ${Object.keys(workbench_recipes).length} recipes available`;
+    dom.workbench_recipes.querySelectorAll("[data-recipe]").forEach((button) => {
+      const recipe = workbench_recipes[button.dataset.recipe];
+      if (recipe) button.disabled = !this.can_afford(recipe.cost);
+    });
+  }
+
+  craft_recipe(id) {
+    const recipe = workbench_recipes[id];
+    if (!recipe || !this.can_afford(recipe.cost)) {
+      this.toast("missing recipe materials", true);
+      return false;
+    }
+    this.consume_cost(recipe.cost);
+    this.inventory.add(make_item(recipe.result), false);
+    this.toast(`crafted ${recipe.name}`);
+    this.sound.tone(440, .09, .03, "sine", 180);
+    this.render_workbench();
+    this.update_hud();
+    this.save(true);
+    return true;
   }
 
   toggle_group_orders() {
@@ -1522,7 +1827,7 @@ class Game {
   }
 
   nearby_companions() {
-    return this.companions.filter((survivor) => !survivor.dead && distance_sq(this.player.x, this.player.y, survivor.x, survivor.y) <= SURVIVOR_SHOUT_RANGE ** 2);
+    return this.companions.filter((survivor) => !survivor.dead && !survivor.remote && distance_sq(this.player.x, this.player.y, survivor.x, survivor.y) <= SURVIVOR_SHOUT_RANGE ** 2);
   }
 
   issue_group_order(order) {
@@ -1552,9 +1857,103 @@ class Game {
     return recipients.length;
   }
 
+  open_radio_center() {
+    if (!this.base || !this.inside || this.inside.building.id !== this.base.building_id) {
+      this.toast("this radio is not the active base center", true);
+      return;
+    }
+    const living = this.companions.filter((survivor) => !survivor.dead);
+    if (!living.length) {
+      this.toast("there are no teammates to call", true);
+      return;
+    }
+    if (!living.some((survivor) => survivor.id === this.active_radio_member_id)) this.active_radio_member_id = living[0].id;
+    this.close_panels();
+    this.render_radio_center();
+    dom.radio_overlay.hidden = false;
+    this.paused = true;
+  }
+
+  active_radio_member() {
+    return this.companions.find((survivor) => survivor.id === this.active_radio_member_id && !survivor.dead) ?? null;
+  }
+
+  render_radio_center() {
+    const living = this.companions.filter((survivor) => !survivor.dead);
+    dom.radio_members.innerHTML = living.map((survivor) => {
+      const mission = survivor.remote ? radio_missions[survivor.radio_mission]?.name ?? "away" : "with the group";
+      return `<button class="${survivor.id === this.active_radio_member_id ? "selected" : ""}" data-radio-member="${safe(survivor.id)}" type="button"><strong>${safe(survivor.name)}</strong><span>${safe(mission)} · ${safe(engagement_rules[survivor.engagement]?.name ?? "normal")}</span></button>`;
+    }).join("");
+    dom.radio_members.querySelectorAll("[data-radio-member]").forEach((button) => button.addEventListener("click", () => {
+      this.active_radio_member_id = button.dataset.radioMember;
+      this.render_radio_center();
+    }));
+    const survivor = this.active_radio_member();
+    dom.radio_status.textContent = survivor
+      ? `${survivor.name} · ${Math.ceil(survivor.health)} health · ${Math.ceil(survivor.hunger)} hunger · ${survivor.remote ? `${radio_missions[survivor.radio_mission]?.name ?? "away"} ${Math.ceil(survivor.radio_time)}s` : "available"}`
+      : "select a teammate";
+  }
+
+  issue_radio_mission(mission) {
+    const definition = radio_missions[mission];
+    const survivor = this.active_radio_member();
+    if (!definition || !survivor) return false;
+    survivor.radio_mission = mission;
+    survivor.radio_time = definition.duration;
+    survivor.remote = true;
+    survivor.order_target_id = null;
+    survivor.radio_runs += 1;
+    this.toast(`${survivor.name}: ${definition.name}`);
+    this.render_radio_center();
+    this.update_hud();
+    this.save(true);
+    return true;
+  }
+
+  set_radio_engagement(rule) {
+    const survivor = this.active_radio_member();
+    if (!survivor || !engagement_rules[rule]) return false;
+    survivor.engagement = rule;
+    this.toast(`${survivor.name}: ${engagement_rules[rule].name}`);
+    this.render_radio_center();
+    this.save(true);
+    return true;
+  }
+
+  update_remote_team(delta) {
+    for (const survivor of this.companions) {
+      if (survivor.dead || !survivor.remote || !survivor.radio_mission) continue;
+      survivor.radio_time = Math.max(0, survivor.radio_time - delta);
+      survivor.hunger = clamp(survivor.hunger - .018 * delta, 0, 100);
+      if (survivor.radio_time > 0) continue;
+      const completed = survivor.radio_mission;
+      if (completed === "return") {
+        survivor.remote = false;
+        survivor.radio_mission = null;
+        survivor.order = "follow";
+        const position = this.find_survivor_space(this.player.x - Math.cos(this.player.angle) * 72, this.player.y - Math.sin(this.player.angle) * 72, survivor);
+        survivor.x = position.x;
+        survivor.y = position.y;
+        this.toast(`${survivor.name} returned to the group`);
+        continue;
+      }
+      if (completed !== "explore") {
+        const tables = { food: loot_tables.kitchen, weapons: loot_tables.police, medicine: loot_tables.medical, junk: loot_tables.industrial };
+        const table = tables[completed] ?? loot_tables.storage;
+        const random = rng(text_hash(`${survivor.id}:${completed}:${survivor.radio_runs}`));
+        const count = 2 + Math.floor(random() * 3);
+        for (let index = 0; index < count; index += 1) survivor.items.push(make_item(table[Math.floor(random() * table.length)], `radio:${survivor.id}:${survivor.radio_runs}:${index}`));
+      }
+      survivor.radio_mission = "return";
+      survivor.radio_time = radio_missions.return.duration;
+      this.toast(`${survivor.name} is returning from ${radio_missions[completed].name}`);
+    }
+  }
+
   close_panels() {
     document.querySelectorAll(".overlay").forEach((panel) => panel.hidden = true);
     this.active_container = null;
+    this.active_container_object = null;
     this.active_survivor = null;
     this.paused = !this.started || this.dead;
   }
@@ -1581,9 +1980,12 @@ class Game {
     this.world_minutes += delta * .75;
     this.command_time = Math.max(0, this.command_time - delta);
     this.player.hurt_time = Math.max(0, this.player.hurt_time - delta);
+    this.update_remote_team(delta);
     this.update_player(delta);
     this.update_survivors(delta);
     this.update_enemies(delta);
+    this.update_built_furniture(delta);
+    this.update_base_floors(delta);
     this.shots.forEach((shot) => shot.life -= delta);
     this.shots = this.shots.filter((shot) => shot.life > 0);
     this.swings.forEach((swing) => swing.life -= delta);
@@ -1599,9 +2001,95 @@ class Game {
     this.camera.x += (this.player.x - this.camera.x) * camera_weight;
     this.camera.y += (this.player.y - this.camera.y) * camera_weight;
     this.shake = Math.max(0, this.shake - delta * 18);
-    if (this.mouse.down) this.attack();
+    if (this.mouse.down && !this.build_type) this.attack();
     if (Math.floor(this.play_time) !== Math.floor(this.play_time - delta)) this.update_hud();
     this.save();
+  }
+
+  building_powered(building_id) {
+    for (const [key, items] of this.built_furniture) {
+      if (!key.startsWith(`${building_id}:`)) continue;
+      if (items.some((item) => item.type === "generator" && item.active !== false)) return true;
+    }
+    return false;
+  }
+
+  update_built_furniture(delta) {
+    const items = this.built_furniture.get(this.current_location_key()) ?? [];
+    const powered = this.inside ? this.building_powered(this.inside.building.id) : false;
+    const enemies = this.active_enemies().filter((enemy) => !enemy.dead);
+    for (const item of items) {
+      item.cooldown = Math.max(0, (item.cooldown ?? 0) - delta);
+      if (item.type !== "turret" || !powered || item.active === false || item.cooldown > 0) continue;
+      let target = null;
+      let nearest = 520 ** 2;
+      const center_x = item.x + item.w * .5;
+      const center_y = item.y + item.h * .5;
+      for (const enemy of enemies) {
+        const distance = distance_sq(center_x, center_y, enemy.x, enemy.y);
+        if (distance < nearest) {
+          nearest = distance;
+          target = enemy;
+        }
+      }
+      if (!target) continue;
+      item.cooldown = .62;
+      this.shots.push({ x1: center_x, y1: center_y, x2: target.x, y2: target.y, life: .08 });
+      this.hurt_enemy(target, 24);
+      this.alert_at(center_x, center_y, 640);
+    }
+  }
+
+  update_base_floors(delta) {
+    if (!this.base) return;
+    this.base_tick += delta;
+    if (this.base_tick < 1) return;
+    const step = this.base_tick;
+    this.base_tick = 0;
+    const building = this.find_building(this.base.building_id);
+    if (!building) return;
+    this.world.pin_building(building);
+    const powered = this.building_powered(building.id);
+    for (let floor = -building.basements; floor < building.floors; floor += 1) {
+      if (this.inside?.building.id === building.id && this.inside.floor === floor) continue;
+      const layout = this.world.interior(building, floor);
+      const enemies = this.enemies_inside(building, floor);
+      for (const enemy of enemies) {
+        if (enemy.dead) continue;
+        enemy.wander -= step;
+        if (enemy.wander <= 0) {
+          enemy.wander = 1.5 + hash(text_hash(enemy.id), Math.floor(this.play_time)) * 3.5;
+          enemy.wander_angle += (hash(text_hash(enemy.id), Math.floor(this.play_time), 41) - .5) * 2;
+        }
+        const move = enemy.speed * .16 * step;
+        const next_x = enemy.x + Math.cos(enemy.wander_angle) * move;
+        const next_y = enemy.y + Math.sin(enemy.wander_angle) * move;
+        const built = this.built_furniture.get(`${building.id}:${floor}`) ?? [];
+        if (this.world.interior_point_open(layout, next_x, next_y, enemy.radius) && !built.some((item) => circle_rect(next_x, next_y, enemy.radius, item))) {
+          enemy.x = next_x;
+          enemy.y = next_y;
+        } else {
+          enemy.wander_angle += Math.PI * .63;
+        }
+      }
+      if (!powered) continue;
+      const turrets = (this.built_furniture.get(`${building.id}:${floor}`) ?? []).filter((item) => item.type === "turret" && item.active !== false);
+      for (const turret of turrets) {
+        turret.cooldown = Math.max(0, (turret.cooldown ?? 0) - step);
+        if (turret.cooldown > 0) continue;
+        const center_x = turret.x + turret.w * .5;
+        const center_y = turret.y + turret.h * .5;
+        const target = enemies.filter((enemy) => !enemy.dead && distance_sq(center_x, center_y, enemy.x, enemy.y) <= 520 ** 2).sort((first, second) => distance_sq(center_x, center_y, first.x, first.y) - distance_sq(center_x, center_y, second.x, second.y))[0];
+        if (!target) continue;
+        turret.cooldown = .62;
+        target.health -= 24;
+        if (target.health <= 0) {
+          target.dead = true;
+          this.killed.add(target.id);
+          this.stats.kills += 1;
+        }
+      }
+    }
   }
 
   update_player(delta) {
@@ -1629,9 +2117,11 @@ class Game {
   move_player(dx, dy) {
     const x = this.player.x + dx;
     const y = this.player.y + dy;
-    if (this.inside) {
+    if (this.sewer) {
+      if (!this.world.sewer_point_open(x, y, PLAYER_RADIUS)) return;
+    } else if (this.inside) {
       const layout = this.layout();
-      if (x < 36 + PLAYER_RADIUS || y < 36 + PLAYER_RADIUS || x > layout.width - 36 - PLAYER_RADIUS || y > layout.height - 36 - PLAYER_RADIUS || layout.walls.some((wall) => circle_rect(x, y, PLAYER_RADIUS, wall))) return;
+      if (x < 36 + PLAYER_RADIUS || y < 36 + PLAYER_RADIUS || x > layout.width - 36 - PLAYER_RADIUS || y > layout.height - 36 - PLAYER_RADIUS || layout.walls.some((wall) => circle_rect(x, y, PLAYER_RADIUS, wall)) || this.built_at().some((item) => circle_rect(x, y, PLAYER_RADIUS, item))) return;
     } else {
       const limit = CITY_RADIUS * CELL;
       if (Math.abs(x) > limit || Math.abs(y) > limit) return;
@@ -1642,12 +2132,12 @@ class Game {
   }
 
   active_survivors() {
-    if (this.inside) return this.companions.filter((survivor) => !survivor.dead);
+    if (this.inside || this.sewer) return this.companions.filter((survivor) => !survivor.dead && !survivor.remote);
     const companion_ids = new Set(this.companions.map((survivor) => survivor.id));
     const locals = this.world.nearby(this.player.x, this.player.y, 1)
       .flatMap((block) => this.survivors_outside(block))
       .filter((survivor) => !survivor.recruited && !companion_ids.has(survivor.id));
-    return [...locals, ...this.companions.filter((survivor) => !survivor.dead)];
+    return [...locals, ...this.companions.filter((survivor) => !survivor.dead && !survivor.remote)];
   }
 
   survivors_outside(block) {
@@ -1761,6 +2251,9 @@ class Game {
         eligible = close_to_player && keeping_up;
       } else if (survivor.recruited && survivor.order === "loot") eligible = distance <= SURVIVOR_LOOT_DANGER_RANGE ** 2;
       else if (survivor.recruited && survivor.order === "hold") eligible = distance_sq(survivor.order_x, survivor.order_y, enemy.x, enemy.y) <= SURVIVOR_GUARD_RANGE ** 2;
+      const engagement = engagement_rules[survivor.engagement] ?? engagement_rules.normal;
+      if (survivor.recruited && ["avoid", "defensive"].includes(survivor.engagement)) eligible = eligible && distance <= engagement.range ** 2;
+      if (survivor.recruited && survivor.engagement === "aggressive" && survivor.order === "attack") eligible = distance <= engagement.range ** 2;
       if (eligible && distance < nearest) {
         nearest = distance;
         target = enemy;
@@ -1770,7 +2263,7 @@ class Game {
   }
 
   update_survivor_loot(survivor, delta) {
-    if (!this.inside) {
+    if (!this.inside || this.sewer) {
       survivor.order = "follow";
       survivor.order_target_id = null;
       return;
@@ -1918,9 +2411,11 @@ class Game {
     const x = survivor.x + dx;
     const y = survivor.y + dy;
     let blocked;
-    if (this.inside) {
+    if (this.sewer) {
+      blocked = !this.world.sewer_point_open(x, y, survivor.radius);
+    } else if (this.inside) {
       const layout = this.layout();
-      blocked = x < 36 + survivor.radius || y < 36 + survivor.radius || x > layout.width - 36 - survivor.radius || y > layout.height - 36 - survivor.radius || layout.walls.some((wall) => circle_rect(x, y, survivor.radius, wall));
+      blocked = x < 36 + survivor.radius || y < 36 + survivor.radius || x > layout.width - 36 - survivor.radius || y > layout.height - 36 - survivor.radius || layout.walls.some((wall) => circle_rect(x, y, survivor.radius, wall)) || this.built_at().some((item) => circle_rect(x, y, survivor.radius, item));
     } else {
       const limit = CITY_RADIUS * CELL;
       blocked = Math.abs(x) > limit || Math.abs(y) > limit || this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, survivor.radius + 2, building)));
@@ -1963,9 +2458,10 @@ class Game {
     const spacing = SURVIVOR_RADIUS * 2 + 10;
     if (distance_sq(x, y, this.player.x, this.player.y) < (SURVIVOR_RADIUS + PLAYER_RADIUS + 8) ** 2) return false;
     if (this.companions.some((companion) => companion !== survivor && !companion.dead && distance_sq(x, y, companion.x, companion.y) < spacing ** 2)) return false;
+    if (this.sewer) return this.world.sewer_point_open(x, y, SURVIVOR_RADIUS);
     if (this.inside) {
       const layout = this.layout();
-      return this.world.interior_point_open(layout, x, y, SURVIVOR_RADIUS);
+      return this.world.interior_point_open(layout, x, y, SURVIVOR_RADIUS) && !this.built_at().some((item) => circle_rect(x, y, SURVIVOR_RADIUS, item));
     }
     const limit = CITY_RADIUS * CELL;
     return Math.abs(x) <= limit && Math.abs(y) <= limit && !this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, SURVIVOR_RADIUS + 2, building)));
@@ -1974,6 +2470,7 @@ class Game {
   place_companions() {
     for (let index = 0; index < this.companions.length; index += 1) {
       const survivor = this.companions[index];
+      if (survivor.dead || survivor.remote) continue;
       const angle = this.player.angle + Math.PI + (index - (this.companions.length - 1) * .5) * .55;
       const preferred_x = this.player.x + Math.cos(angle) * (62 + Math.floor(index / 3) * 34);
       const preferred_y = this.player.y + Math.sin(angle) * (62 + Math.floor(index / 3) * 34);
@@ -1985,6 +2482,13 @@ class Game {
   }
 
   active_enemies() {
+    if (this.sewer) {
+      const block_x = Math.floor(this.player.x / CELL);
+      const block_y = Math.floor(this.player.y / CELL);
+      const enemies = [];
+      for (let y = block_y - 1; y <= block_y + 1; y += 1) for (let x = block_x - 1; x <= block_x + 1; x += 1) enemies.push(...this.enemies_sewer(x, y));
+      return enemies;
+    }
     if (this.inside) return this.enemies_inside(this.inside.building, this.inside.floor);
     return this.world.nearby(this.player.x, this.player.y, 1).flatMap((block) => this.enemies_outside(block));
   }
@@ -2032,6 +2536,31 @@ class Game {
       enemies.push(enemy);
     }
     this.indoor_enemies.set(key, enemies);
+    return enemies;
+  }
+
+  enemies_sewer(block_x, block_y) {
+    const key = `${block_x},${block_y}`;
+    if (this.sewer_enemies.has(key)) return this.sewer_enemies.get(key);
+    const random = rng(text_hash(`${SEED}:${key}:sewer-infected`));
+    const count = 3 + Math.floor(random() * 5);
+    const enemies = [];
+    for (let index = 0; index < count; index += 1) {
+      const id = `infected:sewer:${key}:${index}`;
+      if (this.killed.has(id)) continue;
+      const enemy = this.enemy(id, 0, 0, random);
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const x = block_x * CELL + random() * CELL;
+        const y = block_y * CELL + random() * CELL;
+        if (!this.world.sewer_point_open(x, y, enemy.radius + 4)) continue;
+        enemy.x = x;
+        enemy.y = y;
+        enemies.push(enemy);
+        break;
+      }
+    }
+    this.sewer_enemies.set(key, enemies);
+    if (this.sewer_enemies.size > 80) this.sewer_enemies.delete(this.sewer_enemies.keys().next().value);
     return enemies;
   }
 
@@ -2093,9 +2622,11 @@ class Game {
     const x = enemy.x + dx;
     const y = enemy.y + dy;
     let blocked;
-    if (this.inside) {
+    if (this.sewer) {
+      blocked = !this.world.sewer_point_open(x, y, enemy.radius);
+    } else if (this.inside) {
       const layout = this.layout();
-      blocked = x < 40 || y < 40 || x > layout.width - 40 || y > layout.height - 40 || layout.walls.some((wall) => circle_rect(x, y, enemy.radius, wall));
+      blocked = x < 40 || y < 40 || x > layout.width - 40 || y > layout.height - 40 || layout.walls.some((wall) => circle_rect(x, y, enemy.radius, wall)) || this.built_at().some((item) => circle_rect(x, y, enemy.radius, item));
     } else {
       const bx = Math.floor(x / CELL);
       const by = Math.floor(y / CELL);
@@ -2123,7 +2654,7 @@ class Game {
     const damage = continuous ? raw : Math.max(2, raw * (1 - Math.min(.68, armor / 100)));
     survivor.health = clamp(survivor.health - damage, 0, 100);
     if (!continuous) survivor.hurt_time = .55;
-    if (!continuous) this.blood.push({ x: survivor.x, y: survivor.y, radius: 4 + Math.random() * 7, inside: this.inside ? `${this.inside.building.id}:${this.inside.floor}` : null });
+    if (!continuous) this.blood.push({ x: survivor.x, y: survivor.y, radius: 4 + Math.random() * 7, inside: this.location_marker_key() });
     if (survivor.health > 0) return;
     survivor.dead = true;
     this.lost_survivors.add(survivor.id);
@@ -2211,7 +2742,7 @@ class Game {
   hurt_enemy(enemy, damage, attacker = null) {
     enemy.health -= damage;
     enemy.alerted = true;
-    this.blood.push({ x: enemy.x, y: enemy.y, radius: 4 + Math.random() * 7, inside: this.inside ? `${this.inside.building.id}:${this.inside.floor}` : null });
+    this.blood.push({ x: enemy.x, y: enemy.y, radius: 4 + Math.random() * 7, inside: this.location_marker_key() });
     if (this.blood.length > 180) this.blood.splice(0, 30);
     if (enemy.health > 0) return;
     enemy.dead = true;
@@ -2240,14 +2771,31 @@ class Game {
 
   find_interaction() {
     const choices = [];
-    if (this.inside) {
+    if (this.sewer) {
+      for (const access of this.world.sewer_accesses_near(this.player.x, this.player.y, 1)) {
+        const label = access.type === "street" ? "climb to street level" : `enter ${access.building.name} basement`;
+        choices.push({ type: "leave_sewer", x: access.sewer_x, y: access.sewer_y, label, access });
+      }
+    } else if (this.inside) {
       const layout = this.layout();
       if (layout.exit) choices.push({ type: "exit", x: layout.exit.x, y: layout.exit.y, label: "leave building" });
       if (layout.up) choices.push({ type: "up", x: layout.up.x, y: layout.up.y, label: "go upstairs" });
       if (layout.down) choices.push({ type: "down", x: layout.down.x, y: layout.down.y, label: "go downstairs" });
+      if (layout.sewer_grate) choices.push({ type: "enter_sewer", x: layout.sewer_grate.x, y: layout.sewer_grate.y, label: "descend into sewer", access: this.world.basement_sewer_access(this.inside.building) });
       for (const container of layout.containers) if (!this.looted.has(container.id)) choices.push({ type: "container", x: container.x + container.w * .5, y: container.y + container.h * .5, label: `search ${container.kind}`, container });
     } else {
-      for (const block of this.world.nearby(this.player.x, this.player.y, 1)) for (const building of block.buildings) choices.push({ type: "enter", x: building.door_x, y: building.door_y, label: `enter ${building.name}`, building });
+      for (const block of this.world.nearby(this.player.x, this.player.y, 1)) {
+        for (const building of block.buildings) choices.push({ type: "enter", x: building.door_x, y: building.door_y, label: `enter ${building.name}`, building });
+        for (const access of block.grates) choices.push({ type: "enter_sewer", x: access.x, y: access.y, label: "descend into sewer", access });
+      }
+    }
+    if (!this.sewer) {
+      for (const furniture of this.built_at()) {
+        const definition = furniture_catalog[furniture.type];
+        if (!definition) continue;
+        const label = furniture.storage ? `open ${definition.name}` : furniture.type === "generator" || furniture.type === "turret" ? `${furniture.active === false ? "activate" : "switch off"} ${definition.name}` : `use ${definition.name}`;
+        choices.push({ type: "furniture", x: furniture.x + furniture.w * .5, y: furniture.y + furniture.h * .5, label, furniture });
+      }
     }
     for (const survivor of this.active_survivors()) {
       if (!survivor.dead) choices.push({ type: "talk", x: survivor.x, y: survivor.y, label: `talk to ${survivor.name}`, survivor });
@@ -2273,6 +2821,9 @@ class Game {
     else if (this.interaction.type === "exit") this.exit();
     else if (this.interaction.type === "up") this.change_floor(1);
     else if (this.interaction.type === "down") this.change_floor(-1);
+    else if (this.interaction.type === "enter_sewer") this.enter_sewer(this.interaction.access);
+    else if (this.interaction.type === "leave_sewer") this.leave_sewer(this.interaction.access);
+    else if (this.interaction.type === "furniture") this.use_furniture(this.interaction.furniture);
     else if (this.interaction.type === "talk") this.talk_to_survivor(this.interaction.survivor);
     else this.open_container(this.interaction.container);
   }
@@ -2309,6 +2860,83 @@ class Game {
     this.place_companions();
     this.toast(`${survivor.name} joined your group`);
     this.close_panels();
+    this.update_hud();
+    this.save(true);
+  }
+
+  enter_sewer(access) {
+    if (!access) return;
+    this.reset_transition_orders();
+    this.inside = null;
+    this.sewer = true;
+    this.player.x = access.sewer_x;
+    this.player.y = access.sewer_y;
+    this.place_companions();
+    this.camera.x = this.player.x;
+    this.camera.y = this.player.y;
+    this.toast("entered the city sewer network");
+    this.update_hud();
+    this.save(true);
+  }
+
+  leave_sewer(access) {
+    if (!access) return;
+    this.reset_transition_orders();
+    this.sewer = false;
+    if (access.type === "basement") {
+      this.inside = { building: access.building, floor: access.floor };
+      const grate = this.layout().sewer_grate;
+      this.player.x = grate.x + 48;
+      this.player.y = grate.y;
+      this.toast(`entered ${access.building.name} basement`);
+    } else {
+      this.inside = null;
+      this.player.x = access.x + 48;
+      this.player.y = access.y;
+      this.toast("returned to street level");
+    }
+    this.place_companions();
+    this.camera.x = this.player.x;
+    this.camera.y = this.player.y;
+    this.update_hud();
+    this.save(true);
+  }
+
+  use_furniture(item) {
+    if (!item) return;
+    if (item.storage) {
+      this.open_container(item);
+      return;
+    }
+    if (item.type === "bed") {
+      this.world_minutes += 120;
+      this.player.health = clamp(this.player.health + 24, 0, 100);
+      this.player.stamina = 100;
+      this.player.hunger = clamp(this.player.hunger - 8, 0, 100);
+      this.toast("rested for two hours");
+    } else if (item.type === "cooker" || item.type === "campfire") {
+      if (item.type === "cooker" && (!this.inside || !this.building_powered(this.inside.building.id))) {
+        this.toast("the cooker needs an active generator", true);
+        return;
+      }
+      const meat = this.inventory.items.find((candidate) => candidate.name === "spoiled meat");
+      if (!meat) {
+        this.toast("you have nothing suitable to cook", true);
+        return;
+      }
+      this.inventory.remove(meat.id);
+      this.inventory.add(make_item("cooked meat"), false);
+      this.toast(`cooked ${meat.name}`);
+    } else if (item.type === "crafting_bench") {
+      this.open_workbench();
+      return;
+    } else if (item.type === "generator" || item.type === "turret") {
+      item.active = item.active === false;
+      this.toast(`${item.kind} ${item.active ? "active" : "switched off"}`);
+    } else if (item.type === "radio_center") {
+      this.open_radio_center();
+      return;
+    }
     this.update_hud();
     this.save(true);
   }
@@ -2374,16 +3002,21 @@ class Game {
 
   container_inventory(container) {
     if (!this.container_items.has(container.id)) {
-      const random = rng(text_hash(`${SEED}:${container.id}:loot`));
-      const table = loot_tables[container.table] ?? loot_tables.storage;
-      const count = 1 + Math.floor(random() * 3);
-      this.container_items.set(container.id, Array.from({ length: count }, (_, index) => make_item(table[Math.floor(random() * table.length)], `loot:${container.id}:${index}`)));
+      if (container.built) {
+        this.container_items.set(container.id, []);
+      } else {
+        const random = rng(text_hash(`${SEED}:${container.id}:loot`));
+        const table = loot_tables[container.table] ?? loot_tables.storage;
+        const count = 1 + Math.floor(random() * 3);
+        this.container_items.set(container.id, Array.from({ length: count }, (_, index) => make_item(table[Math.floor(random() * table.length)], `loot:${container.id}:${index}`)));
+      }
     }
     return this.container_items.get(container.id);
   }
 
   open_container(container) {
     this.active_container = container.id;
+    this.active_container_object = container;
     this.container_inventory(container);
     dom.container_name.textContent = container.kind;
     this.render_container();
@@ -2395,6 +3028,12 @@ class Game {
     const items = this.container_items.get(this.active_container) ?? [];
     dom.container_items.innerHTML = items.length ? items.map((item) => `<div class="loot_row"><span><strong>${safe(item.name)}</strong><small>${safe(item.category)}</small></span><button data-take="${safe(item.id)}" type="button">take</button></div>`).join("") : '<span class="empty">empty</span>';
     dom.container_items.querySelectorAll("[data-take]").forEach((button) => button.addEventListener("click", () => this.take(button.dataset.take)));
+    const can_store = Boolean(this.active_container_object?.built);
+    dom.container_store.hidden = !can_store;
+    dom.container_store_items.innerHTML = can_store
+      ? this.inventory.items.map((item) => `<button data-store="${safe(item.id)}" type="button">${safe(item.name)}</button>`).join("") || '<span class="empty">nothing to store</span>'
+      : "";
+    dom.container_store_items.querySelectorAll("[data-store]").forEach((button) => button.addEventListener("click", () => this.store(button.dataset.store)));
   }
 
   take(id) {
@@ -2404,14 +3043,25 @@ class Game {
     const [item] = items.splice(index, 1);
     this.inventory.add(item);
     this.stats.found += 1;
-    if (!items.length) this.looted.add(this.active_container);
+    if (!items.length && !this.active_container_object?.built) this.looted.add(this.active_container);
     this.render_container();
+  }
+
+  store(id) {
+    if (!this.active_container_object?.built) return;
+    const item = this.inventory.remove(id);
+    if (!item) return;
+    this.container_items.get(this.active_container).push(item);
+    this.toast(`stored ${item.name}`);
+    this.render_container();
+    this.update_hud();
+    this.save(true);
   }
 
   take_all() {
     const items = this.container_items.get(this.active_container) ?? [];
     while (items.length) { this.inventory.add(items.shift(), false); this.stats.found += 1; }
-    if (this.active_container) this.looted.add(this.active_container);
+    if (this.active_container && !this.active_container_object?.built) this.looted.add(this.active_container);
     this.toast("container emptied");
     this.sound.tone(440, .08, .025, "sine", 150);
     this.close_panels();
@@ -2448,8 +3098,8 @@ class Game {
     const by = Math.floor(world_y / CELL);
     const district_key = this.inside?.building.district ?? this.world.district(bx, by);
     dom.district_name.textContent = districts[district_key].name;
-    dom.location_name.textContent = this.inside?.building.name ?? this.world.road(bx, by);
-    dom.floor_name.textContent = this.inside ? this.floor_label(this.inside.floor) : "street level";
+    dom.location_name.textContent = this.sewer ? "city sewer network" : this.inside?.building.name ?? this.world.road(bx, by);
+    dom.floor_name.textContent = this.sewer ? "underground sewer" : this.inside ? `${this.floor_label(this.inside.floor)}${this.base?.building_id === this.inside.building.id ? " · team base" : ""}` : "street level";
     const day = Math.floor(this.world_minutes / 1440) + 1;
     const minute_day = Math.floor(this.world_minutes % 1440);
     dom.world_clock.textContent = `day ${String(day).padStart(2, "0")} · ${String(Math.floor(minute_day / 60)).padStart(2, "0")}:${String(minute_day % 60).padStart(2, "0")}`;
@@ -2466,7 +3116,8 @@ class Game {
     const living_companions = this.companions.filter((survivor) => !survivor.dead);
     const active_orders = new Set(living_companions.map((survivor) => survivor.order));
     const order_status = active_orders.size === 1 ? group_orders[[...active_orders][0]]?.hud : "mixed orders";
-    dom.group_status.textContent = living_companions.length ? `${living_companions.length} companion${living_companions.length === 1 ? "" : "s"} · ${order_status}` : "travelling alone";
+    const remote_count = living_companions.filter((survivor) => survivor.remote).length;
+    dom.group_status.textContent = living_companions.length ? `${living_companions.length} companion${living_companions.length === 1 ? "" : "s"} · ${remote_count ? `${remote_count} away` : order_status}` : "travelling alone";
     const north = Math.round(-this.player.y * .16);
     const east = Math.round(this.player.x * .16);
     dom.coordinates.textContent = `${Math.abs(north)}m ${north >= 0 ? "n" : "s"} · ${Math.abs(east)}m ${east >= 0 ? "e" : "w"}`;
@@ -2492,13 +3143,15 @@ class Game {
     context.translate(this.screen_w * .5 + shake_x, this.screen_h * .5 + shake_y);
     context.scale(this.camera.zoom, this.camera.zoom);
     context.translate(-this.camera.x, -this.camera.y);
-    if (this.inside) this.draw_interior(context);
+    if (this.sewer) this.draw_sewer(context);
+    else if (this.inside) this.draw_interior(context);
     else this.draw_city(context);
     this.draw_blood(context);
     this.draw_survivors(context);
     this.draw_enemies(context);
     this.draw_effects(context);
     this.draw_player(context);
+    this.draw_build_preview(context);
     this.draw_command(context);
     context.restore();
     this.draw_light(context);
@@ -2541,7 +3194,9 @@ class Game {
       context.stroke();
     }
     for (const tree of block.trees) if (!block.buildings.some((building) => in_rect(tree.x, tree.y, building, tree.radius + 8))) this.draw_tree(context, tree);
+    for (const grate of block.grates) this.draw_sewer_grate(context, grate.x, grate.y);
     for (const building of block.buildings) this.draw_building(context, building, district);
+    this.draw_built_furniture(context, this.built_furniture.get(`street:${block.key}`) ?? []);
   }
 
   draw_roads(context, start_x, end_x, start_y, end_y, bounds) {
@@ -2596,6 +3251,125 @@ class Game {
     context.beginPath();
     context.arc(tree.x - tree.radius * .25, tree.y - tree.radius * .25, tree.radius * .48, 0, TAU);
     context.fill();
+  }
+
+  draw_sewer_grate(context, x, y) {
+    context.save();
+    context.translate(x, y);
+    context.fillStyle = "#202522";
+    context.fillRect(-16, -11, 32, 22);
+    context.strokeStyle = "rgba(190,197,177,.46)";
+    context.lineWidth = 2;
+    context.strokeRect(-16, -11, 32, 22);
+    for (let offset = -10; offset <= 10; offset += 5) {
+      context.beginPath();
+      context.moveTo(offset, -8);
+      context.lineTo(offset, 8);
+      context.stroke();
+    }
+    context.restore();
+  }
+
+  draw_built_furniture(context, items) {
+    const colors = {
+      cupboard: "#725f48",
+      chest: "#65513b",
+      shelf: "#7b684c",
+      bed: "#73817b",
+      cooker: "#70756f",
+      crafting_bench: "#765e43",
+      turret: "#596866",
+      generator: "#6c684d",
+      campfire: "#8b5634",
+      radio_center: "#586d67",
+    };
+    for (const item of items) {
+      context.fillStyle = item.active === false ? "#414541" : colors[item.type] ?? "#62584a";
+      context.fillRect(item.x, item.y, item.w, item.h);
+      context.strokeStyle = item.type === "radio_center" && this.base?.radio_id === item.id ? "#cfde93" : "rgba(236,231,205,.34)";
+      context.lineWidth = item.type === "radio_center" ? 2 : 1;
+      context.strokeRect(item.x + .5, item.y + .5, item.w - 1, item.h - 1);
+      const center_x = item.x + item.w * .5;
+      const center_y = item.y + item.h * .5;
+      if (item.type === "turret") {
+        context.fillStyle = "#27302e";
+        context.beginPath();
+        context.arc(center_x, center_y, Math.min(item.w, item.h) * .28, 0, TAU);
+        context.fill();
+      } else if (item.type === "campfire") {
+        context.fillStyle = "#d58b45";
+        context.beginPath();
+        context.arc(center_x, center_y, 10, 0, TAU);
+        context.fill();
+      } else if (item.type === "radio_center") {
+        context.strokeStyle = "#bfd18e";
+        context.beginPath();
+        context.moveTo(center_x, item.y + 8);
+        context.lineTo(center_x, item.y - 15);
+        context.stroke();
+      }
+      context.font = "8px Courier New, monospace";
+      context.textAlign = "center";
+      context.textBaseline = "middle";
+      context.fillStyle = "rgba(239,237,222,.66)";
+      context.fillText(item.kind.toUpperCase(), center_x, center_y);
+    }
+  }
+
+  draw_build_preview(context) {
+    if (!this.build_type) return;
+    const preview = this.build_preview();
+    if (!preview) return;
+    const valid = this.can_place_built_furniture(preview) && this.can_afford(furniture_catalog[this.build_type].cost);
+    context.save();
+    context.fillStyle = valid ? "rgba(174,211,132,.3)" : "rgba(207,90,76,.3)";
+    context.strokeStyle = valid ? "#cfde93" : "#cf665b";
+    context.lineWidth = 2;
+    context.fillRect(preview.x, preview.y, preview.w, preview.h);
+    context.strokeRect(preview.x, preview.y, preview.w, preview.h);
+    context.font = "9px Courier New, monospace";
+    context.textAlign = "center";
+    context.fillStyle = valid ? "#e2edbd" : "#f2a198";
+    context.fillText(furniture_catalog[this.build_type].name.toUpperCase(), preview.x + preview.w * .5, preview.y - 10);
+    context.restore();
+  }
+
+  draw_sewer(context) {
+    const bounds = this.bounds(220);
+    const start_x = Math.floor(bounds.left / CELL) - 1;
+    const end_x = Math.ceil(bounds.right / CELL) + 1;
+    const start_y = Math.floor(bounds.top / CELL) - 1;
+    const end_y = Math.ceil(bounds.bottom / CELL) + 1;
+    context.fillStyle = "#101412";
+    context.fillRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
+    context.fillStyle = "#373f39";
+    const width = SEWER_TUNNEL_WIDTH;
+    for (let by = start_y; by <= end_y; by += 1) {
+      for (let bx = start_x; bx <= end_x; bx += 1) {
+        const x = bx * CELL;
+        const y = by * CELL;
+        context.fillRect(x - width * .5, y, width, CELL);
+        context.fillRect(x, y - width * .5, CELL, width);
+        context.fillRect(x + CELL * .5 - width * .5, y, width, CELL);
+        context.fillRect(x, y + CELL * .5 - width * .5, CELL, width);
+        context.fillRect(x + CELL * .5 - SEWER_CHAMBER_SIZE * .5, y + CELL * .5 - SEWER_CHAMBER_SIZE * .5, SEWER_CHAMBER_SIZE, SEWER_CHAMBER_SIZE);
+      }
+    }
+    context.strokeStyle = "rgba(163,179,151,.13)";
+    context.lineWidth = 3;
+    for (let x = start_x; x <= end_x + 1; x += 1) {
+      context.beginPath();
+      context.moveTo(x * CELL, bounds.top);
+      context.lineTo(x * CELL, bounds.bottom);
+      context.stroke();
+    }
+    for (let y = start_y; y <= end_y + 1; y += 1) {
+      context.beginPath();
+      context.moveTo(bounds.left, y * CELL);
+      context.lineTo(bounds.right, y * CELL);
+      context.stroke();
+    }
+    for (const access of this.world.sewer_accesses_near(this.player.x, this.player.y, 2)) this.draw_sewer_grate(context, access.sewer_x, access.sewer_y);
   }
 
   draw_building(context, building, district) {
@@ -2691,8 +3465,10 @@ class Game {
         context.fill();
       }
     }
+    this.draw_built_furniture(context, this.built_at());
     this.draw_stairs(context, layout.up, "UP");
     this.draw_stairs(context, layout.down, "DN");
+    if (layout.sewer_grate) this.draw_sewer_grate(context, layout.sewer_grate.x, layout.sewer_grate.y);
     if (layout.exit) {
       context.fillStyle = "#adbc7b";
       if (building.road_side === "north") context.fillRect(layout.exit.x - 30, 22, 60, 12);
@@ -2735,7 +3511,7 @@ class Game {
   }
 
   draw_blood(context) {
-    const inside_key = this.inside ? `${this.inside.building.id}:${this.inside.floor}` : null;
+    const inside_key = this.location_marker_key();
     for (const mark of this.blood) {
       if (mark.inside !== inside_key) continue;
       context.fillStyle = "rgba(96,22,18,.42)";
@@ -2888,8 +3664,9 @@ class Game {
   }
 
   draw_light(context) {
-    if (this.inside) {
-      context.fillStyle = this.inventory.items.some((item) => item.tags.includes("light")) ? "rgba(2,4,3,.08)" : "rgba(2,4,3,.18)";
+    if (this.inside || this.sewer) {
+      const darkness = this.sewer ? .46 : .18;
+      context.fillStyle = this.inventory.items.some((item) => item.tags.includes("light")) ? `rgba(2,4,3,${darkness * .4})` : `rgba(2,4,3,${darkness})`;
       context.fillRect(0, 0, this.screen_w, this.screen_h);
       return;
     }
@@ -2925,6 +3702,7 @@ class Game {
     const height = dom.minimap_canvas.height;
     context.fillStyle = "#111512";
     context.fillRect(0, 0, width, height);
+    if (this.sewer) return this.draw_sewer_map(context, width, height);
     if (this.inside) return this.draw_inside_map(context, width, height);
     const bx = Math.floor(this.player.x / CELL);
     const by = Math.floor(this.player.y / CELL);
@@ -2998,8 +3776,47 @@ class Game {
     context.strokeStyle = "rgba(207,222,147,.35)";
     context.strokeRect(.5, .5, width - 1, height - 1);
   }
+
+  draw_sewer_map(context, width, height) {
+    const scale = .1;
+    const block_x = Math.floor(this.player.x / CELL);
+    const block_y = Math.floor(this.player.y / CELL);
+    context.save();
+    context.translate(width * .5, height * .5);
+    context.scale(scale, scale);
+    context.translate(-this.player.x, -this.player.y);
+    context.strokeStyle = "#505d54";
+    context.lineWidth = SEWER_TUNNEL_WIDTH;
+    for (let y = block_y - 2; y <= block_y + 2; y += 1) {
+      context.beginPath();
+      context.moveTo((block_x - 2) * CELL, y * CELL);
+      context.lineTo((block_x + 3) * CELL, y * CELL);
+      context.stroke();
+      context.beginPath();
+      context.moveTo((block_x - 2) * CELL, (y + .5) * CELL);
+      context.lineTo((block_x + 3) * CELL, (y + .5) * CELL);
+      context.stroke();
+    }
+    for (let x = block_x - 2; x <= block_x + 2; x += 1) {
+      context.beginPath();
+      context.moveTo(x * CELL, (block_y - 2) * CELL);
+      context.lineTo(x * CELL, (block_y + 3) * CELL);
+      context.stroke();
+      context.beginPath();
+      context.moveTo((x + .5) * CELL, (block_y - 2) * CELL);
+      context.lineTo((x + .5) * CELL, (block_y + 3) * CELL);
+      context.stroke();
+    }
+    context.restore();
+    context.fillStyle = "#cfde93";
+    context.beginPath();
+    context.arc(width * .5, height * .5, 3.5, 0, TAU);
+    context.fill();
+    context.strokeStyle = "rgba(207,222,147,.35)";
+    context.strokeRect(.5, .5, width - 1, height - 1);
+  }
 }
 
 const game = new Game();
 globalThis.city_of_nothing = game;
-globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, group_orders, interior_template_catalog, interior_template_families, exterior_roof_patterns, infected_combat: { melee_reach: INFECTED_MELEE_REACH, attack_time: INFECTED_ATTACK_TIME, player_radius: PLAYER_RADIUS }, survivor_ai: { radius: SURVIVOR_RADIUS, notice_range: SURVIVOR_NOTICE_RANGE, follow_distance: SURVIVOR_FOLLOW_DISTANCE, melee_reach: SURVIVOR_MELEE_REACH, shout_range: SURVIVOR_SHOUT_RANGE, attack_range: SURVIVOR_ATTACK_RANGE, guard_range: SURVIVOR_GUARD_RANGE, loot_range: SURVIVOR_LOOT_RANGE, names: survivor_names }, city_geometry: { cell: CELL, road: ROAD } };
+globalThis.city_of_nothing_test = { make_item, districts, item_catalog, loot_tables, group_orders, radio_missions, engagement_rules, furniture_catalog, workbench_recipes, interior_template_catalog, interior_template_families, exterior_roof_patterns, construction: { build_reach: BUILD_REACH }, infected_combat: { melee_reach: INFECTED_MELEE_REACH, attack_time: INFECTED_ATTACK_TIME, player_radius: PLAYER_RADIUS }, survivor_ai: { radius: SURVIVOR_RADIUS, notice_range: SURVIVOR_NOTICE_RANGE, follow_distance: SURVIVOR_FOLLOW_DISTANCE, melee_reach: SURVIVOR_MELEE_REACH, shout_range: SURVIVOR_SHOUT_RANGE, attack_range: SURVIVOR_ATTACK_RANGE, guard_range: SURVIVOR_GUARD_RANGE, loot_range: SURVIVOR_LOOT_RANGE, names: survivor_names }, city_geometry: { cell: CELL, road: ROAD, radius: CITY_RADIUS }, sewer_geometry: { tunnel_width: SEWER_TUNNEL_WIDTH, chamber_size: SEWER_CHAMBER_SIZE } };

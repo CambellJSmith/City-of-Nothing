@@ -34,7 +34,7 @@ Contains all static UI structure:
 - Main and minimap canvases
 - Location, vitals, weapon, group, threat, and quick-action HUD
 - Interaction prompt and toast stack
-- Inventory, item inspector, crafting, container, and survivor-conversation overlays
+- Inventory, construction, workbench, radio, container, and survivor-conversation overlays
 - Start, guide, and death screens
 - Touch controls
 
@@ -42,7 +42,7 @@ The JavaScript builds a `dom` object from every element with an `id`. Treat thos
 
 ### `styles.css`
 
-Defines the color tokens, HUD panels, menus, inventory and crafting components, start/death screens, responsive behavior, touch controls, and animations.
+Defines the color tokens, HUD panels, menus, inventory, construction, workbench, radio components, start/death screens, responsive behavior, touch controls, and animations.
 
 The responsive layers are:
 
@@ -72,7 +72,7 @@ See [`architecture.md`](architecture.md) for system ownership and lifecycle deta
 2. Set its `category`, numeric `stats`, `tags`, and `description`.
 3. Add `slot` for wearable equipment or `ammo_type` for a firearm.
 4. Add the item name to one or more `loot_tables`, unless it should only be created another way.
-5. Check the inventory card, inspector action, equipment behavior, crafting category, weight, and save/restore.
+5. Check the inventory card, inspector action, equipment behavior, recipe or construction use, weight, and save/restore.
 
 Catalog names are used as component history and loot-table keys. Renaming one can affect generated content and compatibility assumptions.
 
@@ -111,6 +111,18 @@ Generated identity and order matter. Inserting or reordering generation steps ca
 
 Runtime text interpolated into `innerHTML` must pass through `safe()`.
 
+### add furniture or a workbench recipe
+
+Furniture is data-driven through `furniture_catalog`. Add its dimensions, exact item-name cost, and behavior flags, then handle any new action in `use_furniture()` and its presentation in `draw_built_furniture()`. Placement must continue to reject walls, generated fixtures, protected passages, transition clearances, characters, and existing construction.
+
+Fixed recipes belong in `workbench_recipes`; arbitrary two-item combination is intentionally unsupported. Every cost and result name must exist in `item_catalog`.
+
+Radio centers are special: `designate_base()` must unpin the previous base, pin every floor in the new building, and initialize its enemy caches. Any new remote simulation must remain bounded and must not use the player's current layout for collision.
+
+### change the sewer
+
+Keep street and basement access positions inside `World.sewer_point_open()`. The present geometry guarantees full connectivity by joining block-edge tunnels, central cross-tunnels, and a chamber in every block. A new chamber or tunnel variant must retain an open route to that shared grid and must be generated from stable coordinates rather than mutable traversal order.
+
 ### change survivor behavior
 
 Human survivor state is owned by `Game`, not `World`. Keep these responsibilities aligned:
@@ -143,15 +155,18 @@ city_of_nothing_test.districts
 city_of_nothing_test.item_catalog
 city_of_nothing_test.loot_tables
 city_of_nothing_test.group_orders
+city_of_nothing_test.furniture_catalog
+city_of_nothing_test.workbench_recipes
+city_of_nothing_test.radio_missions
+city_of_nothing_test.engagement_rules
+city_of_nothing_test.sewer_geometry
 city_of_nothing_test.survivor_ai
 ```
 
-Create and combine isolated item records:
+Create an isolated item record:
 
 ```js
-const hammer = city_of_nothing_test.make_item("hammer");
-const nails = city_of_nothing_test.make_item("nails");
-city_of_nothing_test.combine_items(hammer, nails, true);
+city_of_nothing_test.make_item("hammer");
 ```
 
 Inspect the current save without changing it:
@@ -189,7 +204,7 @@ Run the dependency-free automated suite before merging:
 node tests.mjs
 ```
 
-The suite checks startup, persistence, crafting, survivor generation, needs, weapon selection, ammunition use, recruitment, shout range, all group orders, order-specific target selection, companion looting, companion transitions, infected target choice, generated content, all building types, every base interior template at minimum dimensions, sampled geometry and family variety, deterministic regeneration, four-way road-facing exteriors, rotated roof fixtures, matching interior entrances and exits, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
+The suite checks startup, persistence, fixed recipes, every requested furniture definition, construction placement and storage, radio missions and engagement, base-floor pinning and remote simulation, every street grate across the 128 × 128 city, basement sewer links, connected tunnel geometry, sewer transitions and enemy placement, survivor AI, all group orders, all building types, every base interior template at minimum dimensions, deterministic regeneration, four-way road-facing exteriors, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
 
 1. Load the start screen with no console errors.
 2. Begin a new run and move with both WASD and arrow keys.
@@ -198,16 +213,17 @@ The suite checks startup, persistence, crafting, survivor generation, needs, wea
 5. Enter several building types, confirm every room is reachable, use stairs when present, and leave.
 6. Search a container and take one item, then take all.
 7. Filter inventory, inspect an item, equip or consume it, and drop an item.
-8. Combine two items and confirm both inputs are consumed.
-9. Meet a survivor, talk, recruit them, and verify they follow and fight with their own supplies.
-10. Press `Q`, issue every group order, and verify only nearby teammates respond.
-11. Confirm attack hunts distant infected, stay keeps formation, hold defends its anchor, and a shout attracts nearby infected.
-12. Order multiple companions to loot and verify they divide containers, carry the contents, and return when the area is clear.
-13. Enter, change floors, leave, reload, and confirm the same companion remains safely with the player and persistent orders restore.
-14. Reload and continue; verify position, inventory, equipment, loot, kills, and companion state.
-15. Resize below both responsive breakpoints.
-16. Test a coarse-pointer device or browser emulation for the movement stick, use, attack, and orders buttons.
-17. Confirm the console contains no uncaught exceptions.
+8. Build, rotate, and place each furniture type; move items into and out of all three storage types.
+9. Use a bed, cooker, crafting bench, generator, turret, and campfire; verify fixed recipes and powered behavior.
+10. Place a radio center, leave the building, and verify every floor stays active.
+11. Meet a survivor, recruit them, and use the radio to send them on each assignment, recall them, and change engagement.
+12. Press `Q`, issue every group order, and verify only nearby non-remote teammates respond.
+13. Enter a street sewer grate, travel through tunnels and chambers, fight, and emerge through another street and a basement.
+14. Order multiple companions to loot and verify they divide containers, carry the contents, and return when clear.
+15. Reload and verify the same construction, stored items, base, sewer position, companions, radio state, inventory, loot, and kills.
+16. Resize below both responsive breakpoints.
+17. Test a coarse-pointer device or browser emulation for the movement stick, use, attack, and orders buttons.
+18. Confirm the console contains no uncaught exceptions.
 
 For deterministic systems, repeat the same action after a clean save and confirm the same block, building, interior, infected, and loot results appear.
 

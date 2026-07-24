@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0a0d0b">
   <meta name="description" content="City of Nothing — a perfectly top-down open-city zombie survival game.">
   <title>City of Nothing</title>
-  <link rel="stylesheet" href="styles.css?v=20260724.5">
+  <link rel="stylesheet" href="styles.css?v=20260724.6">
 </head>
 <body>
   <main id="game_shell">
@@ -45,7 +45,7 @@
       <button data-quick="food" type="button"><kbd>2</kbd><span id="quick_food">apple</span></button>
       <button data-quick="orders" type="button"><kbd>q</kbd><span>shout orders</span></button>
       <button data-quick="inventory" type="button"><kbd>i</kbd><span>inventory</span></button>
-      <button data-quick="crafting" type="button"><kbd>c</kbd><span>crafting</span></button>
+      <button data-quick="building" type="button"><kbd>b</kbd><span>build furniture</span></button>
     </section>
 
     <section id="inventory_overlay" class="overlay" hidden>
@@ -66,25 +66,39 @@
       </div>
     </section>
 
-    <section id="crafting_overlay" class="overlay" hidden>
+    <section id="building_overlay" class="overlay" hidden>
       <header>
-        <div><span class="eyebrow">no recipes · any two items</span><h2>workbench</h2></div>
+        <div><span class="eyebrow">use salvaged materials</span><h2>build furniture</h2></div>
         <button data-close type="button" aria-label="Close">×</button>
       </header>
-      <div class="craft_layout">
-        <div class="craft_picker">
-          <p>choose two items. their components, statistics and permanent tags are combined.</p>
-          <div id="craft_inventory" class="item_grid"></div>
+      <div class="building_layout">
+        <p>choose furniture, aim where it should stand, press <kbd>r</kbd> to rotate and <kbd>e</kbd> or click to place it.</p>
+        <div id="build_catalog" class="build_catalog">
+          <button data-build="cupboard" type="button"><strong>cupboard</strong><span>scrap metal + nails</span></button>
+          <button data-build="chest" type="button"><strong>chest</strong><span>scrap metal + duct tape</span></button>
+          <button data-build="shelf" type="button"><strong>shelf</strong><span>scrap metal + nails</span></button>
+          <button data-build="bed" type="button"><strong>bed</strong><span>2 cloth + duct tape</span></button>
+          <button data-build="cooker" type="button"><strong>cooker</strong><span>2 scrap metal + gasoline</span></button>
+          <button data-build="crafting_bench" type="button"><strong>crafting bench</strong><span>scrap metal + nails + duct tape</span></button>
+          <button data-build="turret" type="button"><strong>turret</strong><span>3 scrap metal + pistol + ammunition</span></button>
+          <button data-build="generator" type="button"><strong>generator</strong><span>2 scrap metal + gasoline + electronics</span></button>
+          <button data-build="campfire" type="button"><strong>campfire</strong><span>cloth + scrap metal</span></button>
+          <button data-build="radio_center" type="button"><strong>radio center</strong><span>2 scrap metal + 2 electronics + ammunition</span></button>
         </div>
-        <div class="equation">
-          <div id="craft_slot_a" class="craft_slot">first item</div><b>+</b>
-          <div id="craft_slot_b" class="craft_slot">second item</div><b>=</b>
-          <div id="craft_result" class="craft_slot result">combined item</div>
-        </div>
-        <footer>
-          <button id="clear_craft" class="secondary" type="button">clear</button>
-          <button id="craft_button" class="primary" type="button" disabled>combine items</button>
-        </footer>
+      </div>
+    </section>
+
+    <section id="workbench_overlay" class="overlay compact" hidden>
+      <header>
+        <div><span class="eyebrow">fixed practical recipes</span><h2>crafting bench</h2></div>
+        <button data-close type="button" aria-label="Close">×</button>
+      </header>
+      <p id="workbench_status">0 recipes available</p>
+      <div id="workbench_recipes" class="recipe_list">
+        <button data-recipe="bandage" type="button"><strong>bandage</strong><span>2 cloth</span></button>
+        <button data-recipe="spiked_bat" type="button"><strong>spiked bat</strong><span>baseball bat + nails + duct tape</span></button>
+        <button data-recipe="9mm_rounds" type="button"><strong>9mm rounds</strong><span>scrap metal + nails</span></button>
+        <button data-recipe="electronic_parts" type="button"><strong>electronic parts</strong><span>flashlight + scrap metal</span></button>
       </div>
     </section>
 
@@ -94,6 +108,10 @@
         <button data-close type="button" aria-label="Close">×</button>
       </header>
       <div id="container_items"></div>
+      <div id="container_store" hidden>
+        <span class="eyebrow">store from your pack</span>
+        <div id="container_store_items"></div>
+      </div>
       <button id="take_all" class="primary wide" type="button">take all</button>
     </section>
 
@@ -125,11 +143,40 @@
       </div>
     </section>
 
+    <section id="radio_overlay" class="overlay" hidden>
+      <header>
+        <div><span class="eyebrow">team base communications</span><h2>radio center</h2></div>
+        <button data-close type="button" aria-label="Close">×</button>
+      </header>
+      <div class="radio_layout">
+        <aside id="radio_members"></aside>
+        <div class="radio_commands">
+          <p id="radio_status">select a teammate</p>
+          <span class="eyebrow">field assignment</span>
+          <div id="radio_missions" class="command_grid">
+            <button data-radio-mission="explore" type="button">go exploring</button>
+            <button data-radio-mission="food" type="button">collect food</button>
+            <button data-radio-mission="weapons" type="button">collect weapons</button>
+            <button data-radio-mission="medicine" type="button">collect medicine</button>
+            <button data-radio-mission="junk" type="button">collect junk</button>
+            <button data-radio-mission="return" type="button">return to the group</button>
+          </div>
+          <span class="eyebrow">combat engagement</span>
+          <div id="radio_engagement" class="command_grid">
+            <button data-radio-engagement="avoid" type="button">avoid combat</button>
+            <button data-radio-engagement="defensive" type="button">defend yourself</button>
+            <button data-radio-engagement="normal" type="button">fight nearby threats</button>
+            <button data-radio-engagement="aggressive" type="button">seek combat</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="start_screen">
       <div class="start_copy">
         <span class="eyebrow">a city that remembers</span>
         <h1>city of<br><em>nothing</em></h1>
-        <p>one vast abandoned city. every building can be entered. every object can become something else.</p>
+        <p>one vast abandoned city. every building can be entered. build a base, recruit a team and survive below the streets.</p>
         <div class="start_actions">
           <button id="continue_button" class="primary large" type="button" hidden>continue</button>
           <button id="new_game_button" class="secondary large" type="button">begin new run</button>
@@ -146,11 +193,12 @@
         <div class="guide_grid">
           <div><kbd>w a s d</kbd><span>move</span></div><div><kbd>shift</kbd><span>sprint</span></div>
           <div><kbd>mouse</kbd><span>aim</span></div><div><kbd>left click</kbd><span>attack</span></div>
-          <div><kbd>e</kbd><span>interact / talk</span></div><div><kbd>i / c</kbd><span>inventory / craft</span></div>
+          <div><kbd>e</kbd><span>interact / place</span></div><div><kbd>i / b</kbd><span>inventory / build</span></div>
           <div><kbd>q</kbd><span>shout group orders</span></div>
+          <div><kbd>r</kbd><span>rotate furniture</span></div>
           <div><kbd>1</kbd><span>best weapon</span></div><div><kbd>2</kbd><span>eat food</span></div>
         </div>
-        <p>walk to marked doors to enter buildings. stairs connect basements and upper floors. permanent tags such as <strong>inedible</strong> and <strong>poisoned</strong> always survive crafting.</p>
+        <p>walk to marked doors to enter buildings. stairs connect floors. sewer grates on streets and in basements lead into one connected underground network. a radio center makes its building your team base.</p>
         <button id="understood_button" class="primary wide" type="button">understood</button>
       </div>
     </section>
@@ -169,6 +217,6 @@
       <button id="touch_orders" type="button">orders</button>
     </div>
   </main>
-  <script src="game.js?v=20260724.5"></script>
+  <script src="game.js?v=20260724.6"></script>
 </body>
 </html>
