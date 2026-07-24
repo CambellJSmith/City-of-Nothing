@@ -14,8 +14,18 @@ const SURVIVOR_GUARD_RANGE = 420;
 const SURVIVOR_LOOT_DANGER_RANGE = 280;
 const SURVIVOR_LOOT_RANGE = 900;
 const SURVIVOR_LOOT_REACH = 58;
+const SURVIVOR_CARRY_CAPACITY = 35;
+const SURVIVOR_EAT_THRESHOLD = 72;
 const INFECTED_MELEE_REACH = 16;
 const INFECTED_ATTACK_TIME = .18;
+const WELL_FED_THRESHOLD = 75;
+const HEALTH_REGEN_RATE = .12;
+const CHARACTER_GAP = 6;
+const CHARACTER_AVOIDANCE_RANGE = 78;
+const NAVIGATION_CELL = 36;
+const NAVIGATION_MARGIN = 288;
+const NAVIGATION_REPATH_TIME = .85;
+const NAVIGATION_MAX_NODES = 2600;
 const SEWER_TUNNEL_WIDTH = 132;
 const SEWER_CHAMBER_SIZE = 260;
 const BUILD_REACH = 132;
@@ -1273,14 +1283,20 @@ class Game {
 
   new_survivor(id, x, y, random, home_key) {
     const name = survivor_names[Math.floor(random() * survivor_names.length)];
-    const weapon_name = ["kitchen knife", "hammer", "baseball bat", "crowbar", "9mm pistol"][Math.floor(random() * 5)];
+    const weapon_roll = random();
+    const weapon_name = weapon_roll > .94 ? "pump shotgun" : weapon_roll > .72 ? "9mm pistol" : ["kitchen knife", "hammer", "baseball bat", "crowbar"][Math.floor(random() * 4)];
     const items = [
       make_item(weapon_name, `${id}:weapon`),
       make_item(["apple", "canned soup", "bottled water", "energy bar"][Math.floor(random() * 4)], `${id}:food`),
     ];
-    if (weapon_name === "9mm pistol") items.push(make_item("9mm rounds", `${id}:ammo`));
+    if (weapon_name === "9mm pistol") items.push(make_item("9mm rounds", `${id}:ammo`), make_item(["kitchen knife", "hammer", "baseball bat"][Math.floor(random() * 3)], `${id}:backup`));
+    if (weapon_name === "pump shotgun") items.push(make_item("shotgun shells", `${id}:ammo`), make_item(["kitchen knife", "hammer", "crowbar"][Math.floor(random() * 3)], `${id}:backup`));
+    if (random() < .45) items.push(make_item(["apple", "canned soup", "bottled water", "energy bar"][Math.floor(random() * 4)], `${id}:food:2`));
     if (random() < .55) items.push(make_item("medical kit", `${id}:medical`));
     if (random() < .35) items.push(make_item("leather jacket", `${id}:armor`));
+    if (random() < .22) items.push(make_item("work boots", `${id}:boots`));
+    const equipment = { weapon: items[0].id, head: null, torso: null, legs: null, feet: null };
+    for (const item of items) if (item.slot && !equipment[item.slot]) equipment[item.slot] = item.id;
     return {
       id,
       name,
@@ -1299,6 +1315,7 @@ class Game {
       radius: SURVIVOR_RADIUS,
       items,
       weapon_id: items[0].id,
+      equipment,
       recruited: false,
       dead: false,
       home_key,
@@ -1314,6 +1331,7 @@ class Game {
       radio_time: 0,
       radio_runs: 0,
       remote: false,
+      navigation: null,
     };
   }
 
@@ -1325,6 +1343,9 @@ class Game {
     const order_y = Number(data?.order_y);
     const engagement = Object.hasOwn(engagement_rules, data?.engagement) ? data.engagement : "normal";
     const radio_mission = Object.hasOwn(radio_missions, data?.radio_mission) ? data.radio_mission : null;
+    const saved_items = Array.isArray(data?.items) ? data.items : [];
+    const saved_equipment = { weapon: data?.weapon_id ?? null, head: null, torso: null, legs: null, feet: null, ...(data?.equipment ?? {}) };
+    for (const slot of Object.keys(saved_equipment)) if (!saved_items.some((item) => item.id === saved_equipment[slot])) saved_equipment[slot] = null;
     const survivor = {
       id: data?.id ?? uid("survivor"),
       name: data?.name ?? "survivor",
@@ -1341,8 +1362,9 @@ class Game {
       wander_angle: Number(data?.wander_angle) || 0,
       speed: clamp(Number(data?.speed) || 140, 100, 190),
       radius: SURVIVOR_RADIUS,
-      items: Array.isArray(data?.items) ? data.items : [],
-      weapon_id: data?.weapon_id ?? null,
+      items: saved_items,
+      weapon_id: saved_equipment.weapon,
+      equipment: saved_equipment,
       recruited,
       dead: false,
       home_key: data?.home_key ?? "",
@@ -1358,8 +1380,9 @@ class Game {
       radio_time: Math.max(0, Number(data?.radio_time) || 0),
       radio_runs: Math.max(0, Number(data?.radio_runs) || 0),
       remote: Boolean(data?.remote && radio_mission),
+      navigation: null,
     };
-    if (!survivor.items.some((item) => item.id === survivor.weapon_id)) survivor.weapon_id = null;
+    this.survivor_equip_best_armor(survivor);
     return survivor;
   }
 
@@ -1376,6 +1399,7 @@ class Game {
       speed: survivor.speed,
       items: survivor.items,
       weapon_id: survivor.weapon_id,
+      equipment: survivor.equipment,
       home_key: survivor.home_key,
       color: survivor.color,
       line: survivor.line,
@@ -2017,7 +2041,10 @@ class Game {
     for (const survivor of this.companions) {
       if (survivor.dead || !survivor.remote || !survivor.radio_mission) continue;
       survivor.radio_time = Math.max(0, survivor.radio_time - delta);
+      survivor.hurt_time = Math.max(0, survivor.hurt_time - delta);
       survivor.hunger = clamp(survivor.hunger - .018 * delta, 0, 100);
+      this.survivor_use_supplies(survivor);
+      this.regenerate_well_fed(survivor, delta);
       if (survivor.radio_time > 0) continue;
       const completed = survivor.radio_mission;
       if (completed === "return") {
@@ -2035,7 +2062,7 @@ class Game {
         const table = tables[completed] ?? loot_tables.storage;
         const random = rng(text_hash(`${survivor.id}:${completed}:${survivor.radio_runs}`));
         const count = 2 + Math.floor(random() * 3);
-        for (let index = 0; index < count; index += 1) survivor.items.push(make_item(table[Math.floor(random() * table.length)], `radio:${survivor.id}:${survivor.radio_runs}:${index}`));
+        for (let index = 0; index < count; index += 1) this.survivor_add_item(survivor, make_item(table[Math.floor(random() * table.length)], `radio:${survivor.id}:${survivor.radio_runs}:${index}`));
       }
       survivor.radio_mission = "return";
       survivor.radio_time = radio_missions.return.duration;
@@ -2089,6 +2116,8 @@ class Game {
       this.player.hunger = clamp(this.player.hunger - .1, 0, 100);
       if (this.player.hunger <= 0) this.damage_player(1.5);
     }
+    this.regenerate_well_fed(this.player, delta);
+    this.separate_characters();
     this.find_interaction();
     const camera_weight = 1 - Math.pow(.0001, delta);
     this.camera.x += (this.player.x - this.camera.x) * camera_weight;
@@ -2226,20 +2255,271 @@ class Game {
     return this.world.interior(this.inside.building, this.inside.floor);
   }
 
+  static_point_open(x, y, radius) {
+    if (this.sewer) return this.world.sewer_point_open(x, y, radius);
+    if (this.inside) {
+      const layout = this.layout();
+      return this.world.interior_point_open(layout, x, y, radius) && !this.built_at().some((item) => circle_rect(x, y, radius, item));
+    }
+    const limit = CITY_RADIUS * CELL;
+    if (Math.abs(x) > limit || Math.abs(y) > limit) return false;
+    if (this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, radius + 2, building)))) return false;
+    return !this.built_nearby(x, y).some((item) => circle_rect(x, y, radius, item));
+  }
+
+  movement_characters() {
+    if (this.movement_actors) return this.movement_actors;
+    const survivors = this.movement_survivors ?? this.active_survivors().filter((survivor) => !survivor.dead && !survivor.remote);
+    const enemies = this.movement_enemies ?? this.active_enemies().filter((enemy) => !enemy.dead);
+    return [this.player, ...survivors, ...enemies];
+  }
+
+  dynamic_point_open(entity, x, y, radius) {
+    for (const other of this.movement_characters()) {
+      if (other === entity || other.dead || other.remote) continue;
+      const minimum = radius + (other.radius ?? PLAYER_RADIUS) + CHARACTER_GAP;
+      const current_distance = Math.hypot(entity.x - other.x, entity.y - other.y);
+      const next_distance = Math.hypot(x - other.x, y - other.y);
+      if (next_distance < minimum && next_distance <= current_distance + .001) return false;
+    }
+    return true;
+  }
+
+  character_avoidance(entity, desired_x, desired_y, ignored = null) {
+    let x = desired_x;
+    let y = desired_y;
+    for (const other of this.movement_characters()) {
+      if (other === entity || other === ignored || other.dead || other.remote) continue;
+      let dx = entity.x - other.x;
+      let dy = entity.y - other.y;
+      let distance = Math.hypot(dx, dy);
+      const minimum = entity.radius + (other.radius ?? PLAYER_RADIUS) + CHARACTER_GAP;
+      const range = minimum + CHARACTER_AVOIDANCE_RANGE;
+      if (distance >= range) continue;
+      if (distance < .001) {
+        const angle = hash(text_hash(entity.id ?? "player"), text_hash(other.id ?? "player")) * TAU;
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+        distance = 1;
+      }
+      const proximity = 1 - distance / range;
+      const weight = proximity * proximity * (distance < minimum ? 3.2 : 1.15);
+      x += dx / distance * weight;
+      y += dy / distance * weight;
+    }
+    return normal(x, y);
+  }
+
+  line_static_open(x1, y1, x2, y2, radius) {
+    const distance = Math.hypot(x2 - x1, y2 - y1);
+    const steps = Math.max(1, Math.ceil(distance / Math.max(10, radius * .7)));
+    for (let index = 1; index <= steps; index += 1) {
+      const amount = index / steps;
+      if (!this.static_point_open(x1 + (x2 - x1) * amount, y1 + (y2 - y1) * amount, radius)) return false;
+    }
+    return true;
+  }
+
+  find_navigation_path(entity, goal_x, goal_y) {
+    let cell = NAVIGATION_CELL;
+    const min_x = Math.min(entity.x, goal_x) - NAVIGATION_MARGIN;
+    const min_y = Math.min(entity.y, goal_y) - NAVIGATION_MARGIN;
+    const max_x = Math.max(entity.x, goal_x) + NAVIGATION_MARGIN;
+    const max_y = Math.max(entity.y, goal_y) + NAVIGATION_MARGIN;
+    let columns = Math.floor((max_x - min_x) / cell) + 1;
+    let rows = Math.floor((max_y - min_y) / cell) + 1;
+    while (columns * rows > NAVIGATION_MAX_NODES) {
+      cell *= 1.12;
+      columns = Math.floor((max_x - min_x) / cell) + 1;
+      rows = Math.floor((max_y - min_y) / cell) + 1;
+    }
+    const count = columns * rows;
+    const state = new Int8Array(count);
+    state.fill(-1);
+    const point = (index) => ({ x: min_x + index % columns * cell, y: min_y + Math.floor(index / columns) * cell });
+    const is_open = (index) => {
+      if (index < 0 || index >= count) return false;
+      if (state[index] < 0) {
+        const candidate = point(index);
+        state[index] = Number(this.static_point_open(candidate.x, candidate.y, entity.radius));
+      }
+      return state[index] === 1;
+    };
+    const nearest_node = (x, y) => {
+      const base_column = clamp(Math.round((x - min_x) / cell), 0, columns - 1);
+      const base_row = clamp(Math.round((y - min_y) / cell), 0, rows - 1);
+      let best = -1;
+      let best_distance = Infinity;
+      for (let radius = 0; radius <= 4; radius += 1) {
+        for (let row = Math.max(0, base_row - radius); row <= Math.min(rows - 1, base_row + radius); row += 1) {
+          for (let column = Math.max(0, base_column - radius); column <= Math.min(columns - 1, base_column + radius); column += 1) {
+            if (radius && Math.abs(column - base_column) !== radius && Math.abs(row - base_row) !== radius) continue;
+            const index = row * columns + column;
+            if (!is_open(index)) continue;
+            const candidate = point(index);
+            const distance = distance_sq(x, y, candidate.x, candidate.y);
+            if (distance < best_distance && this.line_static_open(x, y, candidate.x, candidate.y, entity.radius)) {
+              best = index;
+              best_distance = distance;
+            }
+          }
+        }
+        if (best >= 0) return best;
+      }
+      return best;
+    };
+    const start = nearest_node(entity.x, entity.y);
+    const goal = nearest_node(goal_x, goal_y);
+    if (start < 0 || goal < 0) return [];
+    const costs = new Float64Array(count);
+    costs.fill(Infinity);
+    const parents = new Int32Array(count);
+    parents.fill(-1);
+    const closed = new Uint8Array(count);
+    const heap = [];
+    const push = (entry) => {
+      heap.push(entry);
+      let index = heap.length - 1;
+      while (index > 0) {
+        const parent = Math.floor((index - 1) * .5);
+        if (heap[parent].score <= entry.score) break;
+        heap[index] = heap[parent];
+        index = parent;
+      }
+      heap[index] = entry;
+    };
+    const pop = () => {
+      const root = heap[0];
+      const tail = heap.pop();
+      if (heap.length && tail) {
+        let index = 0;
+        while (true) {
+          let child = index * 2 + 1;
+          if (child >= heap.length) break;
+          if (child + 1 < heap.length && heap[child + 1].score < heap[child].score) child += 1;
+          if (heap[child].score >= tail.score) break;
+          heap[index] = heap[child];
+          index = child;
+        }
+        heap[index] = tail;
+      }
+      return root;
+    };
+    const goal_point = point(goal);
+    costs[start] = 0;
+    push({ index: start, score: 0 });
+    let visited = 0;
+    const directions = [[-1, 0, 1], [1, 0, 1], [0, -1, 1], [0, 1, 1], [-1, -1, Math.SQRT2], [1, -1, Math.SQRT2], [-1, 1, Math.SQRT2], [1, 1, Math.SQRT2]];
+    while (heap.length && visited < NAVIGATION_MAX_NODES) {
+      const current = pop().index;
+      if (closed[current]) continue;
+      closed[current] = 1;
+      visited += 1;
+      if (current === goal) break;
+      const column = current % columns;
+      const row = Math.floor(current / columns);
+      for (const [move_x, move_y, cost] of directions) {
+        const next_column = column + move_x;
+        const next_row = row + move_y;
+        if (next_column < 0 || next_column >= columns || next_row < 0 || next_row >= rows) continue;
+        const next = next_row * columns + next_column;
+        if (closed[next] || !is_open(next)) continue;
+        if (move_x && move_y && (!is_open(row * columns + next_column) || !is_open(next_row * columns + column))) continue;
+        const next_cost = costs[current] + cost;
+        if (next_cost >= costs[next]) continue;
+        costs[next] = next_cost;
+        parents[next] = current;
+        const candidate = point(next);
+        push({ index: next, score: next_cost + Math.hypot(goal_point.x - candidate.x, goal_point.y - candidate.y) / cell });
+      }
+    }
+    if (start !== goal && parents[goal] < 0) return [];
+    const path = [];
+    let current = goal;
+    while (current !== start && current >= 0) {
+      path.push(point(current));
+      current = parents[current];
+    }
+    path.reverse();
+    if (!path.length || this.line_static_open(path.at(-1).x, path.at(-1).y, goal_x, goal_y, entity.radius)) path.push({ x: goal_x, y: goal_y });
+    const simplified = [];
+    let from_x = entity.x;
+    let from_y = entity.y;
+    for (let index = 0; index < path.length;) {
+      let furthest = index;
+      while (furthest + 1 < path.length && this.line_static_open(from_x, from_y, path[furthest + 1].x, path[furthest + 1].y, entity.radius)) furthest += 1;
+      simplified.push(path[furthest]);
+      from_x = path[furthest].x;
+      from_y = path[furthest].y;
+      index = furthest + 1;
+    }
+    return simplified;
+  }
+
+  navigation_waypoint(entity, goal_x, goal_y) {
+    if (this.line_static_open(entity.x, entity.y, goal_x, goal_y, entity.radius)) {
+      entity.navigation = null;
+      return { x: goal_x, y: goal_y };
+    }
+    const navigation = entity.navigation;
+    const changed = !navigation || distance_sq(navigation.goal_x, navigation.goal_y, goal_x, goal_y) > (NAVIGATION_CELL * 2) ** 2;
+    if (changed || navigation.expires <= this.play_time || !navigation.path.length) {
+      entity.navigation = {
+        goal_x,
+        goal_y,
+        expires: this.play_time + NAVIGATION_REPATH_TIME + hash(text_hash(entity.id ?? "actor"), Math.floor(this.play_time * 2)) * .35,
+        path: this.find_navigation_path(entity, goal_x, goal_y),
+      };
+    }
+    const path = entity.navigation.path;
+    while (path.length && distance_sq(entity.x, entity.y, path[0].x, path[0].y) < (NAVIGATION_CELL * .55) ** 2) path.shift();
+    while (path.length > 1 && this.line_static_open(entity.x, entity.y, path[1].x, path[1].y, entity.radius)) path.shift();
+    return path[0] ?? { x: goal_x, y: goal_y };
+  }
+
+  move_character(entity, kind, dx, dy) {
+    if (kind === "survivor") return this.move_survivor(entity, dx, dy);
+    if (kind === "enemy") return this.move_enemy(entity, dx, dy);
+    this.move_player(dx, dy);
+    return true;
+  }
+
+  move_character_toward(entity, kind, dx, dy, ignored = null) {
+    const distance = Math.hypot(dx, dy);
+    if (distance < .0001) return false;
+    const step = distance;
+    const desired = this.character_avoidance(entity, dx / distance, dy / distance, ignored);
+    const angles = [0, .42, -.42, .82, -.82, 1.25, -1.25, Math.PI];
+    const base = Math.atan2(desired.y, desired.x);
+    for (const offset of angles) {
+      if (this.move_character(entity, kind, Math.cos(base + offset) * step, Math.sin(base + offset) * step)) return true;
+    }
+    return false;
+  }
+
+  navigate_character(entity, kind, target_x, target_y, speed, delta, stop_distance = 0, ignored = null) {
+    const dx = target_x - entity.x;
+    const dy = target_y - entity.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= stop_distance + .001) return true;
+    const goal_distance = Math.max(0, distance - stop_distance);
+    const goal_x = entity.x + dx / distance * goal_distance;
+    const goal_y = entity.y + dy / distance * goal_distance;
+    const waypoint = this.navigation_waypoint(entity, goal_x, goal_y);
+    const waypoint_x = waypoint.x - entity.x;
+    const waypoint_y = waypoint.y - entity.y;
+    const waypoint_distance = Math.hypot(waypoint_x, waypoint_y);
+    if (waypoint_distance < .001) return false;
+    const step = Math.min(goal_distance, waypoint_distance, speed * delta);
+    const moved = this.move_character_toward(entity, kind, waypoint_x / waypoint_distance * step, waypoint_y / waypoint_distance * step, ignored);
+    if (!moved && entity.navigation) entity.navigation.expires = 0;
+    return moved;
+  }
+
   move_player(dx, dy) {
     const x = this.player.x + dx;
     const y = this.player.y + dy;
-    if (this.sewer) {
-      if (!this.world.sewer_point_open(x, y, PLAYER_RADIUS)) return;
-    } else if (this.inside) {
-      const layout = this.layout();
-      if (x < 36 + PLAYER_RADIUS || y < 36 + PLAYER_RADIUS || x > layout.width - 36 - PLAYER_RADIUS || y > layout.height - 36 - PLAYER_RADIUS || layout.walls.some((wall) => circle_rect(x, y, PLAYER_RADIUS, wall)) || this.built_at().some((item) => circle_rect(x, y, PLAYER_RADIUS, item))) return;
-    } else {
-      const limit = CITY_RADIUS * CELL;
-      if (Math.abs(x) > limit || Math.abs(y) > limit) return;
-      if (this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, PLAYER_RADIUS + 2, building)))) return;
-      if (this.built_nearby(x, y).some((item) => circle_rect(x, y, PLAYER_RADIUS, item))) return;
-    }
+    if (!this.static_point_open(x, y, PLAYER_RADIUS) || !this.dynamic_point_open(this.player, x, y, PLAYER_RADIUS)) return;
     this.player.x = x;
     this.player.y = y;
   }
@@ -2299,29 +2579,97 @@ class Game {
     return true;
   }
 
-  survivor_weapon(survivor) {
+  survivor_inventory_weight(survivor) {
+    return survivor.items.reduce((total, item) => total + (item.stats.weight ?? 0), 0);
+  }
+
+  survivor_add_item(survivor, item) {
+    if (this.survivor_inventory_weight(survivor) + (item.stats.weight ?? 0) > SURVIVOR_CARRY_CAPACITY) return false;
+    survivor.items.push(item);
+    return true;
+  }
+
+  survivor_equipped(survivor, slot) {
+    const id = survivor.equipment?.[slot] ?? (slot === "weapon" ? survivor.weapon_id : null);
+    return survivor.items.find((item) => item.id === id) ?? null;
+  }
+
+  survivor_equip_best_armor(survivor) {
+    survivor.equipment = { weapon: survivor.weapon_id ?? null, head: null, torso: null, legs: null, feet: null, ...(survivor.equipment ?? {}) };
+    for (const slot of ["head", "torso", "legs", "feet"]) {
+      const item = survivor.items
+        .filter((candidate) => candidate.slot === slot)
+        .sort((first, second) => (second.stats.armor ?? 0) - (first.stats.armor ?? 0))[0] ?? null;
+      survivor.equipment[slot] = item?.id ?? null;
+    }
+  }
+
+  survivor_armor(survivor) {
+    return ["head", "torso", "legs", "feet"].reduce((total, slot) => total + (this.survivor_equipped(survivor, slot)?.stats.armor ?? 0), 0);
+  }
+
+  survivor_weapon_score(survivor, item, target = null, enemies = []) {
+    if (item.category !== "weapon" || (item.ammo_type && this.survivor_ammo(survivor, item.ammo_type) <= 0)) return -Infinity;
+    const firearm = item.tags.includes("firearm");
+    const attack = item.stats.attack ?? 0;
+    const range = item.stats.range ?? 42;
+    let score = attack + range * (firearm ? .03 : .1);
+    if (!target) return score - Number(firearm) * 8;
+    const distance = Math.hypot(target.x - survivor.x, target.y - survivor.y);
+    const melee_distance = survivor.radius + target.radius + range + SURVIVOR_MELEE_REACH;
+    if (!firearm) return score + (distance <= melee_distance + 54 ? 52 : -Math.min(70, (distance - melee_distance) * .1));
+    const ammunition = this.survivor_ammo(survivor, item.ammo_type);
+    const close_quarters = survivor.radius + target.radius + 96;
+    score += distance > close_quarters ? 58 : -38;
+    score += target.variant === "brute" ? 28 : 0;
+    score -= ammunition <= 2 ? 24 : ammunition <= 5 ? 8 : 0;
+    if (item.tags.includes("shell")) {
+      const clustered = enemies.filter((enemy) => !enemy.dead && distance_sq(target.x, target.y, enemy.x, enemy.y) < 160 ** 2).length;
+      score += distance <= 290 ? 30 : -42;
+      score += Math.max(0, clustered - 1) * 22;
+    }
+    return score;
+  }
+
+  survivor_weapon(survivor, target = null, enemies = []) {
     let weapon = null;
+    let best_score = -Infinity;
     for (const item of survivor.items) {
-      if (item.category !== "weapon" || (item.ammo_type && this.survivor_ammo(survivor, item.ammo_type) <= 0)) continue;
-      if (!weapon || (item.stats.attack ?? 0) > (weapon.stats.attack ?? 0)) weapon = item;
+      const score = this.survivor_weapon_score(survivor, item, target, enemies);
+      if (score <= best_score) continue;
+      best_score = score;
+      weapon = item;
     }
     survivor.weapon_id = weapon?.id ?? null;
+    survivor.equipment = { weapon: null, head: null, torso: null, legs: null, feet: null, ...(survivor.equipment ?? {}) };
+    survivor.equipment.weapon = survivor.weapon_id;
     return weapon;
   }
 
   survivor_use_supplies(survivor) {
+    this.survivor_equip_best_armor(survivor);
     if (survivor.health < 58) {
-      const medical = survivor.items.filter((item) => item.tags.includes("medical")).sort((first, second) => (second.stats.heal ?? 0) - (first.stats.heal ?? 0))[0];
+      const missing_health = 100 - survivor.health;
+      const medical = survivor.items
+        .filter((item) => item.tags.includes("medical"))
+        .sort((first, second) => Math.abs((first.stats.heal ?? 0) - missing_health) - Math.abs((second.stats.heal ?? 0) - missing_health))[0];
       if (medical) {
         survivor.health = clamp(survivor.health + (medical.stats.heal ?? 0), 0, 100);
         survivor.items.splice(survivor.items.indexOf(medical), 1);
         if (survivor.recruited) this.toast(`${survivor.name} used ${medical.name}`);
       }
     }
-    if (survivor.hunger >= 55) return;
+    if (survivor.hunger >= SURVIVOR_EAT_THRESHOLD) return;
+    const needed_food = 88 - survivor.hunger;
     const food = survivor.items
       .filter((item) => item.tags.includes("food") && !item.tags.includes("inedible") && !item.tags.includes("poisoned"))
-      .sort((first, second) => (second.stats.food ?? 0) - (first.stats.food ?? 0))[0];
+      .sort((first, second) => {
+        const first_food = first.stats.food ?? 0;
+        const second_food = second.stats.food ?? 0;
+        const first_score = Math.min(first_food, needed_food) * 2 - Math.max(0, first_food - needed_food) + (first.stats.heal ?? 0) * Number(survivor.health < 86);
+        const second_score = Math.min(second_food, needed_food) * 2 - Math.max(0, second_food - needed_food) + (second.stats.heal ?? 0) * Number(survivor.health < 86);
+        return second_score - first_score;
+      })[0];
     if (!food) return;
     survivor.hunger = clamp(survivor.hunger + (food.stats.food ?? 0), 0, 100);
     survivor.health = clamp(survivor.health + Math.max(0, food.stats.heal ?? 0), 0, 100);
@@ -2329,9 +2677,19 @@ class Game {
     if (survivor.recruited) this.toast(`${survivor.name} ate ${food.name}`);
   }
 
+  regenerate_well_fed(character, delta) {
+    if (character.hunger <= WELL_FED_THRESHOLD || character.health >= 100 || character.hurt_time > 0) return 0;
+    const previous = character.health;
+    character.health = clamp(character.health + HEALTH_REGEN_RATE * delta, 0, 100);
+    return character.health - previous;
+  }
+
   update_survivors(delta) {
     const enemies = this.active_enemies().filter((enemy) => !enemy.dead);
     const survivors = this.active_survivors();
+    this.movement_survivors = survivors;
+    this.movement_enemies = enemies;
+    this.movement_actors = [this.player, ...survivors, ...enemies];
     for (const survivor of survivors) {
       if (survivor.dead) continue;
       survivor.hurt_time = Math.max(0, survivor.hurt_time - delta);
@@ -2341,6 +2699,7 @@ class Game {
       this.survivor_use_supplies(survivor);
       if (survivor.hunger <= 0) this.damage_survivor(survivor, 1.2 * delta, true);
       if (survivor.dead) continue;
+      this.regenerate_well_fed(survivor, delta);
       const target = this.survivor_target(survivor, enemies);
       if (target) this.update_survivor_combat(survivor, target, delta);
       else if (survivor.recruited && survivor.order === "loot") this.update_survivor_loot(survivor, delta);
@@ -2348,6 +2707,9 @@ class Game {
       else if (survivor.recruited) this.follow_group(survivor, this.companions.indexOf(survivor), delta);
       else this.wander_survivor(survivor, delta);
     }
+    this.movement_survivors = null;
+    this.movement_enemies = null;
+    this.movement_actors = null;
   }
 
   survivor_target(survivor, enemies) {
@@ -2413,13 +2775,11 @@ class Game {
       return;
     }
     survivor.angle = Math.atan2(dy, dx);
-    const step = Math.min(distance - SURVIVOR_LOOT_REACH, survivor.speed * 1.15 * delta);
-    const moved = this.move_survivor_toward(survivor, dx / distance * step, dy / distance * step);
+    const moved = this.navigate_character(survivor, "survivor", target_x, target_y, survivor.speed * 1.15, delta, SURVIVOR_LOOT_REACH);
     survivor.stuck_time = moved ? 0 : survivor.stuck_time + delta;
     if (survivor.stuck_time > 2.25) {
-      const position = this.find_survivor_space(target_x, target_y, survivor);
-      survivor.x = position.x;
-      survivor.y = position.y;
+      survivor.navigation = null;
+      survivor.order_target_id = null;
       survivor.stuck_time = 0;
     }
   }
@@ -2430,13 +2790,12 @@ class Game {
     const distance = Math.hypot(dx, dy);
     if (distance < 18) return;
     survivor.angle = Math.atan2(dy, dx);
-    const step = Math.min(distance - 12, survivor.speed * delta);
-    this.move_survivor_toward(survivor, dx / distance * step, dy / distance * step);
+    this.navigate_character(survivor, "survivor", survivor.order_x, survivor.order_y, survivor.speed, delta, 12);
   }
 
   update_survivor_combat(survivor, enemy, delta) {
     if (enemy.dead) return;
-    const weapon = this.survivor_weapon(survivor);
+    const weapon = this.survivor_weapon(survivor, enemy, this.movement_enemies ?? this.active_enemies());
     const firearm = weapon?.tags.includes("firearm");
     const dx = enemy.x - survivor.x;
     const dy = enemy.y - survivor.y;
@@ -2448,8 +2807,7 @@ class Game {
     survivor.angle = Math.atan2(direction_y, direction_x);
     enemy.alerted = true;
     if (distance > attack_distance) {
-      const step = Math.min(distance - attack_distance, survivor.speed * delta);
-      this.move_survivor_toward(survivor, direction_x * step, direction_y * step);
+      this.navigate_character(survivor, "survivor", enemy.x, enemy.y, survivor.speed, delta, attack_distance, enemy);
       return;
     }
     const contact_distance = survivor.radius + enemy.radius;
@@ -2488,24 +2846,15 @@ class Game {
     const dy = target_y - survivor.y;
     const distance = Math.hypot(dx, dy);
     if (distance < 16) return;
-    if (distance > 900) {
-      const position = this.find_survivor_space(target_x, target_y, survivor);
-      survivor.x = position.x;
-      survivor.y = position.y;
-      return;
-    }
     survivor.angle = Math.atan2(dy, dx);
-    const speed = survivor.speed * (distance > 220 ? 1.65 : distance > 90 ? 1.25 : 1);
-    const step = Math.min(distance - 12, speed * delta);
+    const speed = survivor.speed * (distance > 900 ? 2.25 : distance > 220 ? 1.65 : distance > 90 ? 1.25 : 1);
     const start_x = survivor.x;
     const start_y = survivor.y;
-    this.move_survivor_toward(survivor, dx / distance * step, dy / distance * step);
+    this.navigate_character(survivor, "survivor", target_x, target_y, speed, delta, 12, this.player);
     if (distance_sq(start_x, start_y, survivor.x, survivor.y) < .01) survivor.stuck_time += delta;
     else survivor.stuck_time = 0;
     if (survivor.stuck_time > 2.25 && distance > 120) {
-      const position = this.find_survivor_space(target_x, target_y, survivor);
-      survivor.x = position.x;
-      survivor.y = position.y;
+      survivor.navigation = null;
       survivor.stuck_time = 0;
     }
   }
@@ -2517,67 +2866,42 @@ class Game {
       survivor.wander_angle += (hash(text_hash(survivor.id), Math.floor(this.play_time), 7) - .5) * 2.2;
     }
     survivor.angle = survivor.wander_angle;
-    this.move_survivor(survivor, Math.cos(survivor.wander_angle) * survivor.speed * .2 * delta, Math.sin(survivor.wander_angle) * survivor.speed * .2 * delta);
+    this.move_character_toward(survivor, "survivor", Math.cos(survivor.wander_angle) * survivor.speed * .2 * delta, Math.sin(survivor.wander_angle) * survivor.speed * .2 * delta);
   }
 
   move_survivor(survivor, dx, dy) {
     const x = survivor.x + dx;
     const y = survivor.y + dy;
-    let blocked;
-    if (this.sewer) {
-      blocked = !this.world.sewer_point_open(x, y, survivor.radius);
-    } else if (this.inside) {
-      const layout = this.layout();
-      blocked = x < 36 + survivor.radius || y < 36 + survivor.radius || x > layout.width - 36 - survivor.radius || y > layout.height - 36 - survivor.radius || layout.walls.some((wall) => circle_rect(x, y, survivor.radius, wall)) || this.built_at().some((item) => circle_rect(x, y, survivor.radius, item));
-    } else {
-      const limit = CITY_RADIUS * CELL;
-      blocked = Math.abs(x) > limit || Math.abs(y) > limit || this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, survivor.radius + 2, building))) || this.built_nearby(x, y).some((item) => circle_rect(x, y, survivor.radius, item));
-    }
-    if (!blocked) {
+    const open = this.static_point_open(x, y, survivor.radius) && this.dynamic_point_open(survivor, x, y, survivor.radius);
+    if (open) {
       survivor.x = x;
       survivor.y = y;
     } else {
       survivor.wander_angle += Math.PI * .63;
     }
-    return !blocked;
+    return open;
   }
 
   move_survivor_toward(survivor, dx, dy) {
-    if (this.move_survivor(survivor, dx, dy)) return true;
-    const horizontal_first = Math.abs(dx) >= Math.abs(dy);
-    if (horizontal_first) {
-      if (Math.abs(dx) > .001 && this.move_survivor(survivor, dx, 0)) return true;
-      if (Math.abs(dy) > .001 && this.move_survivor(survivor, 0, dy)) return true;
-    } else {
-      if (Math.abs(dy) > .001 && this.move_survivor(survivor, 0, dy)) return true;
-      if (Math.abs(dx) > .001 && this.move_survivor(survivor, dx, 0)) return true;
-    }
-    return false;
+    return this.move_character_toward(survivor, "survivor", dx, dy);
   }
 
   find_survivor_space(preferred_x, preferred_y, survivor = null) {
-    for (const radius of [0, 42, 68, 94, 126]) {
-      for (let index = 0; index < 12; index += 1) {
-        const angle = index / 12 * TAU;
+    for (const radius of [0, 42, 68, 94, 126, 168, 216, 288, 380, 500]) {
+      for (let index = 0; index < 18; index += 1) {
+        const angle = index / 18 * TAU;
         const x = preferred_x + Math.cos(angle) * radius;
         const y = preferred_y + Math.sin(angle) * radius;
         if (this.survivor_point_open(x, y, survivor)) return { x, y };
       }
     }
-    return { x: this.player.x, y: this.player.y };
+    if (survivor && this.static_point_open(survivor.x, survivor.y, survivor.radius)) return { x: survivor.x, y: survivor.y };
+    return { x: preferred_x, y: preferred_y };
   }
 
   survivor_point_open(x, y, survivor = null) {
-    const spacing = SURVIVOR_RADIUS * 2 + 10;
-    if (distance_sq(x, y, this.player.x, this.player.y) < (SURVIVOR_RADIUS + PLAYER_RADIUS + 8) ** 2) return false;
-    if (this.companions.some((companion) => companion !== survivor && !companion.dead && distance_sq(x, y, companion.x, companion.y) < spacing ** 2)) return false;
-    if (this.sewer) return this.world.sewer_point_open(x, y, SURVIVOR_RADIUS);
-    if (this.inside) {
-      const layout = this.layout();
-      return this.world.interior_point_open(layout, x, y, SURVIVOR_RADIUS) && !this.built_at().some((item) => circle_rect(x, y, SURVIVOR_RADIUS, item));
-    }
-    const limit = CITY_RADIUS * CELL;
-    return Math.abs(x) <= limit && Math.abs(y) <= limit && !this.world.nearby(x, y, 1).some((block) => block.buildings.some((building) => circle_rect(x, y, SURVIVOR_RADIUS + 2, building)));
+    const probe = survivor ?? { x, y, radius: SURVIVOR_RADIUS };
+    return this.static_point_open(x, y, SURVIVOR_RADIUS) && this.dynamic_point_open(probe, x, y, SURVIVOR_RADIUS);
   }
 
   place_companions() {
@@ -2609,7 +2933,7 @@ class Game {
   enemy(id, x, y, random) {
     const variant_roll = random();
     const variant = variant_roll > .93 ? "brute" : variant_roll < .18 ? "runner" : "walker";
-    return { id, x, y, angle: random() * TAU, health: variant === "brute" ? 82 : 45 + random() * 18, speed: variant === "brute" ? 50 : 55 + random() * 22, radius: variant === "brute" ? 24 : 18, attack: random(), melee_time: 0, wander: random() * 3, wander_angle: random() * TAU, alerted: false, dead: false, variant };
+    return { id, x, y, angle: random() * TAU, health: variant === "brute" ? 82 : 45 + random() * 18, speed: variant === "brute" ? 50 : 55 + random() * 22, radius: variant === "brute" ? 24 : 18, attack: random(), melee_time: 0, wander: random() * 3, wander_angle: random() * TAU, alerted: false, dead: false, variant, navigation: null };
   }
 
   enemies_outside(block) {
@@ -2679,7 +3003,11 @@ class Game {
 
   update_enemies(delta) {
     const survivors = this.active_survivors().filter((survivor) => !survivor.dead);
-    for (const enemy of this.active_enemies()) {
+    const enemies = this.active_enemies();
+    this.movement_survivors = survivors;
+    this.movement_enemies = enemies;
+    this.movement_actors = [this.player, ...survivors, ...enemies];
+    for (const enemy of enemies) {
       if (enemy.dead) continue;
       enemy.attack = Math.max(0, enemy.attack - delta);
       enemy.melee_time = Math.max(0, (enemy.melee_time ?? 0) - delta);
@@ -2707,13 +3035,13 @@ class Game {
         enemy.angle = Math.atan2(direction_y, direction_x);
         if (distance < contact_distance) {
           const retreat_distance = Math.min(melee_distance - distance, move_speed * delta);
-          this.move_enemy(enemy, -direction_x * retreat_distance, -direction_y * retreat_distance);
+          this.move_character_toward(enemy, "enemy", -direction_x * retreat_distance, -direction_y * retreat_distance);
           continue;
         }
         let attack_distance = distance;
         if (distance > melee_distance) {
-          const approach_distance = Math.min(distance - melee_distance, move_speed * delta);
-          if (this.move_enemy(enemy, direction_x * approach_distance, direction_y * approach_distance)) attack_distance -= approach_distance;
+          this.navigate_character(enemy, "enemy", target.x, target.y, move_speed, delta, melee_distance, target);
+          attack_distance = Math.hypot(target.x - enemy.x, target.y - enemy.y);
         }
         if (attack_distance <= melee_distance + .001 && enemy.attack <= 0) {
           enemy.attack = enemy.variant === "runner" ? .8 : enemy.variant === "brute" ? 1.35 : 1.15;
@@ -2726,28 +3054,75 @@ class Game {
           enemy.wander = 1.5 + hash(text_hash(enemy.id), Math.floor(this.play_time)) * 3.5;
           enemy.wander_angle += (hash(text_hash(enemy.id), Math.floor(this.play_time), 2) - .5) * 2.4;
         }
-        this.move_enemy(enemy, Math.cos(enemy.wander_angle) * enemy.speed * .22 * delta, Math.sin(enemy.wander_angle) * enemy.speed * .22 * delta);
+        this.move_character_toward(enemy, "enemy", Math.cos(enemy.wander_angle) * enemy.speed * .22 * delta, Math.sin(enemy.wander_angle) * enemy.speed * .22 * delta);
       }
     }
+    this.movement_survivors = null;
+    this.movement_enemies = null;
+    this.movement_actors = null;
   }
 
   move_enemy(enemy, dx, dy) {
     const x = enemy.x + dx;
     const y = enemy.y + dy;
-    let blocked;
-    if (this.sewer) {
-      blocked = !this.world.sewer_point_open(x, y, enemy.radius);
-    } else if (this.inside) {
-      const layout = this.layout();
-      blocked = x < 40 || y < 40 || x > layout.width - 40 || y > layout.height - 40 || layout.walls.some((wall) => circle_rect(x, y, enemy.radius, wall)) || this.built_at().some((item) => circle_rect(x, y, enemy.radius, item));
-    } else {
-      const bx = Math.floor(x / CELL);
-      const by = Math.floor(y / CELL);
-      blocked = [this.world.block(bx, by), this.world.block(bx - 1, by), this.world.block(bx, by - 1)].some((block) => block.buildings.some((building) => circle_rect(x, y, enemy.radius, building))) || this.built_nearby(x, y).some((item) => circle_rect(x, y, enemy.radius, item));
-    }
-    if (!blocked) { enemy.x = x; enemy.y = y; }
+    const open = this.static_point_open(x, y, enemy.radius) && this.dynamic_point_open(enemy, x, y, enemy.radius);
+    if (open) { enemy.x = x; enemy.y = y; }
     else enemy.wander_angle += Math.PI * .63;
-    return !blocked;
+    return open;
+  }
+
+  displace_character(character, dx, dy) {
+    for (const [move_x, move_y] of [[dx, dy], [dx, 0], [0, dy], [-dy, dx], [dy, -dx]]) {
+      const x = character.x + move_x;
+      const y = character.y + move_y;
+      if (!this.static_point_open(x, y, character.radius)) continue;
+      character.x = x;
+      character.y = y;
+      character.navigation = null;
+      return true;
+    }
+    return false;
+  }
+
+  separate_characters() {
+    const actors = [
+      { character: this.player, radius: PLAYER_RADIUS, fixed: true },
+      ...this.active_survivors().filter((survivor) => !survivor.dead && !survivor.remote).map((character) => ({ character, radius: character.radius, fixed: false })),
+      ...this.active_enemies().filter((enemy) => !enemy.dead).map((character) => ({ character, radius: character.radius, fixed: false })),
+    ];
+    for (let pass = 0; pass < 3; pass += 1) {
+      let separated = true;
+      for (let first_index = 0; first_index < actors.length; first_index += 1) {
+        for (let second_index = first_index + 1; second_index < actors.length; second_index += 1) {
+          const first = actors[first_index];
+          const second = actors[second_index];
+          const minimum = first.radius + second.radius + CHARACTER_GAP;
+          let dx = second.character.x - first.character.x;
+          let dy = second.character.y - first.character.y;
+          let distance = Math.hypot(dx, dy);
+          if (distance >= minimum) continue;
+          separated = false;
+          if (distance < .001) {
+            const angle = hash(text_hash(first.character.id ?? "player"), text_hash(second.character.id ?? "player"), pass) * TAU;
+            dx = Math.cos(angle);
+            dy = Math.sin(angle);
+            distance = 1;
+          }
+          const overlap = minimum - distance + .01;
+          const direction_x = dx / distance;
+          const direction_y = dy / distance;
+          if (first.fixed) {
+            this.displace_character(second.character, direction_x * overlap, direction_y * overlap);
+          } else if (second.fixed) {
+            this.displace_character(first.character, -direction_x * overlap, -direction_y * overlap);
+          } else {
+            const first_moved = this.displace_character(first.character, -direction_x * overlap * .5, -direction_y * overlap * .5);
+            this.displace_character(second.character, direction_x * overlap * (first_moved ? .5 : 1), direction_y * overlap * (first_moved ? .5 : 1));
+          }
+        }
+      }
+      if (separated) break;
+    }
   }
 
   damage_player(raw) {
@@ -2763,7 +3138,7 @@ class Game {
 
   damage_survivor(survivor, raw, continuous = false) {
     if (survivor.dead || (!continuous && survivor.hurt_time > 0)) return;
-    const armor = survivor.items.reduce((total, item) => total + (item.category === "wearable" ? item.stats.armor ?? 0 : 0), 0);
+    const armor = this.survivor_armor(survivor);
     const damage = continuous ? raw : Math.max(2, raw * (1 - Math.min(.68, armor / 100)));
     survivor.health = clamp(survivor.health - damage, 0, 100);
     if (!continuous) survivor.hurt_time = .55;
@@ -2869,7 +3244,7 @@ class Game {
     }
     if (hash(text_hash(enemy.id), 9) < .25) {
       const item = make_item(hash(text_hash(enemy.id), 10) < .5 ? "energy bar" : "cloth", `drop:${enemy.id}`);
-      if (attacker) attacker.items.push(item);
+      if (attacker) this.survivor_add_item(attacker, item);
       else this.inventory.add(item);
     }
   }
@@ -2949,10 +3324,12 @@ class Game {
       .filter((item) => item !== weapon)
       .map((item) => item.name)
       .slice(0, 5);
+    const armor = ["head", "torso", "legs", "feet"].map((slot) => this.survivor_equipped(survivor, slot)?.name).filter(Boolean);
+    const carried = this.survivor_inventory_weight(survivor);
     dom.survivor_name.textContent = survivor.name;
     dom.survivor_dialogue.textContent = survivor.recruited ? `we are moving together. i am ${group_orders[survivor.order]?.hud ?? "following"} your order.` : survivor.line;
     dom.survivor_status.textContent = `${Math.ceil(survivor.health)} health · ${Math.ceil(survivor.hunger)} hunger · ${survivor.kills} infected killed`;
-    dom.survivor_loadout.innerHTML = `<div><span>weapon</span><strong>${safe(weapon?.name ?? "bare hands")}</strong></div><div><span>supplies</span><strong>${safe(supplies.join(", ") || "none")}</strong></div>`;
+    dom.survivor_loadout.innerHTML = `<div><span>weapon</span><strong>${safe(weapon?.name ?? "bare hands")}</strong></div><div><span>armor</span><strong>${safe(armor.join(", ") || "none")}</strong></div><div><span>inventory</span><strong>${carried.toFixed(1)} / ${SURVIVOR_CARRY_CAPACITY.toFixed(1)} kg</strong></div><div><span>supplies</span><strong>${safe(supplies.join(", ") || "none")}</strong></div>`;
     dom.invite_survivor.hidden = survivor.recruited;
     dom.survivor_overlay.hidden = false;
     this.paused = true;
@@ -3251,12 +3628,20 @@ class Game {
 
   survivor_loot_container(survivor, container) {
     const items = this.container_inventory(container);
-    const count = items.length;
-    while (items.length) survivor.items.push(items.shift());
-    this.looted.add(container.id);
+    let count = 0;
+    while (items.length && this.survivor_add_item(survivor, items[0])) {
+      items.shift();
+      count += 1;
+    }
+    if (!items.length) this.looted.add(container.id);
     survivor.order_target_id = null;
     this.stats.found += count;
-    this.toast(`${survivor.name} looted ${container.kind} · ${count} item${count === 1 ? "" : "s"}`);
+    if (!count && items.length) {
+      survivor.order = "follow";
+      this.toast(`${survivor.name}'s inventory is full`, true);
+    } else {
+      this.toast(`${survivor.name} looted ${container.kind} · ${count} item${count === 1 ? "" : "s"}`);
+    }
   }
 
   die() {
@@ -4058,4 +4443,4 @@ class Game {
 
 const game = new Game();
 globalThis.city_of_nothing = game;
-globalThis.city_of_nothing_test = { make_item, districts, item_catalog, loot_tables, group_orders, radio_missions, engagement_rules, furniture_catalog, workbench_recipes, interior_template_catalog, interior_template_families, exterior_roof_patterns, construction: { build_reach: BUILD_REACH }, infected_combat: { melee_reach: INFECTED_MELEE_REACH, attack_time: INFECTED_ATTACK_TIME, player_radius: PLAYER_RADIUS }, survivor_ai: { radius: SURVIVOR_RADIUS, notice_range: SURVIVOR_NOTICE_RANGE, follow_distance: SURVIVOR_FOLLOW_DISTANCE, melee_reach: SURVIVOR_MELEE_REACH, shout_range: SURVIVOR_SHOUT_RANGE, attack_range: SURVIVOR_ATTACK_RANGE, guard_range: SURVIVOR_GUARD_RANGE, loot_range: SURVIVOR_LOOT_RANGE, names: survivor_names }, city_geometry: { cell: CELL, road: ROAD, radius: CITY_RADIUS }, sewer_geometry: { tunnel_width: SEWER_TUNNEL_WIDTH, chamber_size: SEWER_CHAMBER_SIZE } };
+globalThis.city_of_nothing_test = { make_item, districts, item_catalog, loot_tables, group_orders, radio_missions, engagement_rules, furniture_catalog, workbench_recipes, interior_template_catalog, interior_template_families, exterior_roof_patterns, construction: { build_reach: BUILD_REACH }, infected_combat: { melee_reach: INFECTED_MELEE_REACH, attack_time: INFECTED_ATTACK_TIME, player_radius: PLAYER_RADIUS }, survivor_ai: { radius: SURVIVOR_RADIUS, notice_range: SURVIVOR_NOTICE_RANGE, follow_distance: SURVIVOR_FOLLOW_DISTANCE, melee_reach: SURVIVOR_MELEE_REACH, shout_range: SURVIVOR_SHOUT_RANGE, attack_range: SURVIVOR_ATTACK_RANGE, guard_range: SURVIVOR_GUARD_RANGE, loot_range: SURVIVOR_LOOT_RANGE, carry_capacity: SURVIVOR_CARRY_CAPACITY, eat_threshold: SURVIVOR_EAT_THRESHOLD, names: survivor_names }, survival: { well_fed_threshold: WELL_FED_THRESHOLD, health_regen_rate: HEALTH_REGEN_RATE }, navigation: { cell: NAVIGATION_CELL, margin: NAVIGATION_MARGIN, avoidance_range: CHARACTER_AVOIDANCE_RANGE, gap: CHARACTER_GAP }, city_geometry: { cell: CELL, road: ROAD, radius: CITY_RADIUS }, sewer_geometry: { tunnel_width: SEWER_TUNNEL_WIDTH, chamber_size: SEWER_CHAMBER_SIZE } };

@@ -41,7 +41,7 @@ Interior dimensions and wall layouts vary by building type. Stairs connect gener
 
 | System | Current behavior |
 | --- | --- |
-| Health | Starts full. Damage is blocked briefly after a hit. Food or medicine can heal up to the maximum. |
+| Health | Starts full. Damage is blocked briefly after a hit. Food or medicine can heal up to the maximum. Players and human survivors slowly regenerate while hunger is above 75%. |
 | Stamina | Sprinting drains stamina; walking or standing restores it. Sprinting stops when stamina is nearly empty. |
 | Hunger | Decreases during active play. At zero, the player repeatedly takes starvation damage. |
 | Carry weight | All carried item weights are summed. Weight above 22 kg slows movement, up to a 30% penalty. |
@@ -56,6 +56,8 @@ Walking speed is 170 world units per second. Sprinting raises it to 260 before a
 
 The mouse controls facing on fine-pointer devices. With an idle pointer or on touch devices, the player faces the movement direction.
 
+Human survivors and infected calculate local routes around buildings, interior walls, construction, and sewer boundaries. Clear paths are taken directly; blocked paths use smoothed waypoints through doors and around obstacle edges. Short-range avoidance and collision separation keep the player, survivors, and infected from occupying the same space.
+
 Infected notice nearby humans at close range or when alerted by an attack. They pursue the nearest living human, so independent survivors and recruited companions can draw attacks away from the player.
 
 ## human survivors
@@ -66,11 +68,15 @@ Independent survivors:
 
 - Roam their current outdoor area when no infected are nearby.
 - Detect infected within 680 world units.
-- Select the highest-attack weapon they can currently use.
-- Use firearms only while matching ammunition remains, then fall back to another weapon or bare hands.
+- Carry a finite 35 kg personal inventory with separate weapon, head, torso, legs, and feet equipment slots.
+- Automatically equip the strongest armor available for each slot.
+- Select weapons for the current distance, enemy variant, nearby enemy cluster, ammunition supply, and close-quarters risk rather than raw attack alone.
+- Conserve firearms against close ordinary threats, favor ranged weapons for distant or tougher threats, favor shotguns against suitable close groups, and fall back immediately when ammunition is exhausted.
 - Approach to melee reach or hold a practical ranged distance before attacking.
-- Consume safe food when hunger falls below 55.
-- Use medical supplies when health falls below 58.
+- Consume the best-fit safe food when hunger falls below 72, preserving larger meals when a smaller item is enough.
+- Use the best-fit medical supply when health falls below 58.
+- Exclude poisoned and inedible food from autonomous eating.
+- Regenerate health slowly while hunger remains above 75%.
 - Can be attacked and killed by infected.
 
 Walk close and press `E` to talk. The conversation shows the survivor's current health, hunger, kills, weapon, and supplies. Choosing **invite to join your group** recruits them.
@@ -84,9 +90,10 @@ Recruited companions:
 - Enter and leave buildings with the player.
 - Move safely between upper floors and basements.
 - Preserve health, hunger, inventory, equipment choice, kills, and current order in the save.
+- Divide looted items without exceeding individual carrying capacity; uncarried items remain in their original container.
 - Can be contacted individually from a radio center, including while away on an assignment.
 
-A recruited companion who dies is removed from the group and does not regenerate. Items dropped by an infected killed by a survivor go into that survivor's inventory, giving them additional food or materials to use or carry.
+A recruited companion who dies is removed from the group and does not regenerate. Items dropped by an infected killed by a survivor go into that survivor's inventory when capacity permits, giving them additional food or materials to use or carry.
 
 ### group orders
 
@@ -172,6 +179,8 @@ The `1` shortcut equips the carried weapon with the highest attack value. The `2
 
 Food tagged `poisoned` applies its normal food and healing statistics, then deals additional poison damage. Items tagged `inedible` cannot be consumed.
 
+Human survivor inventories use the same complete item records as the player, including weight, tags, ammunition counts, wearable slots, and weapon statistics. Their equipped item IDs, carried contents, and remaining ammunition persist independently. A survivor conversation reports their weapon, equipped armor, supplies, and current carried weight.
+
 ## loot
 
 Containers generate one to three items the first time they are opened. Their table depends on the building and container:
@@ -224,7 +233,7 @@ The sewer is a separate dark world layer with infected, combat, companion travel
 
 The browser stores one save per origin under `city_of_nothing_save_v1`.
 
-Saved progress includes street/interior/sewer location, survival state, inventory, equipment, built furniture and stored items, the active base, companions and radio assignments, encountered outdoor survivors, permanently lost survivor IDs, world time, play time, statistics, emptied containers, remaining container contents, and defeated infected IDs.
+Saved progress includes street/interior/sewer location, survival state, inventory, equipment, built furniture and stored items, the active base, companions with their personal inventories and equipment, radio assignments, encountered outdoor survivors, permanently lost survivor IDs, world time, play time, statistics, emptied containers, remaining container contents, and defeated infected IDs.
 
 Transient infected movement, current health of living infected, blood, attack effects, camera shake, open panels, and audio state are not saved. When a zone is reconstructed, surviving infected return to their deterministic starting state.
 
