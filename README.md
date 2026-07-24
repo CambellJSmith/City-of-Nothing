@@ -13,8 +13,10 @@ The entire game is plain HTML, CSS, and JavaScript. There is no build step, pack
 - Procedural multi-floor interiors selected from 371 connected base templates, including upper floors and basements
 - Melee weapons, firearms, armor, food, medicine, ammunition, tools, and materials
 - Walker, runner, and brute infected variants
+- Autonomous human survivors who roam, manage supplies, fight infected, converse, and can join the player
+- Persistent companion groups that travel through streets, buildings, and floors in formation
 - Free-form crafting that combines any two items
-- Persistent inventory, equipment, looted containers, defeated infected, location, time, and statistics
+- Persistent inventory, equipment, companions, encountered survivors, looted containers, defeated infected, location, time, and statistics
 - Desktop mouse and keyboard controls plus touch controls for coarse-pointer devices
 - Canvas rendering, a local minimap, a day/night overlay, synthesized sound, and a responsive HUD
 
@@ -38,7 +40,7 @@ Then open `http://localhost:8080/`.
 | `Shift` | Sprint |
 | Mouse | Aim |
 | Left click or `Space` | Attack |
-| `E` | Interact, enter, exit, search, or use stairs |
+| `E` | Interact, talk, recruit, enter, exit, search, or use stairs |
 | `I` or `Tab` | Open or close inventory |
 | `C` | Open or close crafting |
 | `1` | Equip the strongest carried weapon |
@@ -67,6 +69,8 @@ On touch devices, use the virtual movement stick and the **use** and **attack** 
 - `Inventory` owns items, equipment, consumption, crafting, and inventory UI rendering.
 - `Sound` creates short effects with the Web Audio API.
 
+`Game` also owns infected and human-survivor AI. Independent survivors roam nearby blocks, use personal inventories, fight with usable weapons, and can be recruited into a formation that follows the player across world transitions.
+
 Only the area around the player is simulated and rendered. Generated world data is recreated from stable IDs and the fixed seed, while player-made changes are recorded separately. This keeps the world large without storing every block or interior.
 
 See the [architecture documentation](docs/architecture.md) for the full runtime model.
@@ -84,6 +88,8 @@ The save contains:
 - Kill, loot, and crafting statistics
 - Looted container IDs and remaining generated container contents
 - Defeated infected IDs
+- Recruited companions, their inventories, health, hunger, and kill counts
+- Encountered independent survivors and permanently lost survivor IDs
 
 Starting a new run removes the current save. Death does not overwrite it, so **return to last save** restores the most recent surviving state.
 
