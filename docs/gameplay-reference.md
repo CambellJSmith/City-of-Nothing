@@ -6,7 +6,7 @@ This is a reference for the mechanics currently implemented in `game.js`. It des
 
 Explore the city, meet other survivors, enter buildings, defeat or avoid infected, search containers, manage hunger and health, improve equipment, and combine items. The city and its loot are reproducible, while the consequences of the run are saved locally.
 
-Simulation pauses while an inventory, crafting, container, or survivor-conversation panel is open.
+Simulation pauses while an inventory, construction, workbench, radio, container, or survivor-conversation panel is open.
 
 ## the city
 
@@ -84,6 +84,7 @@ Recruited companions:
 - Enter and leave buildings with the player.
 - Move safely between upper floors and basements.
 - Preserve health, hunger, inventory, equipment choice, kills, and current order in the save.
+- Can be contacted individually from a radio center, including while away on an assignment.
 
 A recruited companion who dies is removed from the group and does not regenerate. Items dropped by an infected killed by a survivor go into that survivor's inventory, giving them additional food or materials to use or carry.
 
@@ -101,6 +102,23 @@ Press `Q` or use the **orders** quick action to open the voice-command panel. A 
 Looting companions reserve different containers so the group does not duplicate work. They will interrupt looting to defend themselves against infected within 280 world units. Once a companion can find no unreserved container in range, that companion returns to formation.
 
 Container contents, emptied-container state, item IDs, and found-item statistics use the same persistent data whether the player or a companion performs the search. Hold and loot tasks return to **stay with me** when the group changes buildings or floors; attack and follow orders continue.
+
+### radio assignments
+
+A radio center placed inside a building designates that complete building as the team base. Interact with the active base radio to select any living teammate, including one already away from the player.
+
+Assignments are **go exploring**, **collect food**, **collect weapons**, **collect medicine**, **collect junk**, and **return to the group**. Field assignments take time, then the teammate returns automatically; collection assignments add deterministic supplies to that teammate's personal inventory.
+
+Each teammate also has an individual engagement rule:
+
+| Rule | Behavior |
+| --- | --- |
+| Avoid combat | Fight only at immediate danger distance |
+| Defend yourself | Fight threats within a short defensive radius |
+| Fight nearby threats | Use the standard survivor awareness range |
+| Seek combat | Use the broad attack-order range |
+
+Remote teammates are removed from the local formation until they return. Missions, remaining time, mission count, engagement, and inventory all persist.
 
 ## infected
 
@@ -136,7 +154,7 @@ The player can attack with bare hands, melee weapons, or firearms.
 - Firearms attack faster than melee weapons and create much larger alert radii.
 - An empty firearm stays equipped and produces an empty-weapon message and sound.
 
-Durability is stored, displayed, and combined during crafting, but attacks do not currently reduce it.
+Durability is stored and displayed, but attacks do not currently reduce it.
 
 ## inventory and equipment
 
@@ -152,7 +170,7 @@ Equipment slots are `weapon`, `head`, `torso`, `legs`, and `feet`. The current c
 
 The `1` shortcut equips the carried weapon with the highest attack value. The `2` shortcut consumes the carried edible item with the highest food value.
 
-Food tagged `poisoned` applies its normal food and healing statistics, then deals additional poison damage. Items tagged `inedible` cannot be consumed even if crafting also gives them the `food` tag.
+Food tagged `poisoned` applies its normal food and healing statistics, then deals additional poison damage. Items tagged `inedible` cannot be consumed.
 
 ## loot
 
@@ -171,30 +189,38 @@ Containers generate one to three items the first time they are opened. Their tab
 
 Remaining generated contents are saved. A container is marked looted once its last item is taken.
 
-## crafting
+## construction and workbenches
 
-Crafting accepts any two different carried items. It consumes both and creates one item.
+Press `B` to choose furniture. Construction consumes the exact named inventory materials shown in the menu. Aim the preview, press `R` to rotate, and press `E` or click to place; red previews are blocked by walls, fixtures, doors, transitions, another character, or other built furniture.
 
-The result follows these rules:
+| Furniture | Function |
+| --- | --- |
+| Cupboard, chest, shelf | Persistent storage; items can be moved between the container and player inventory |
+| Bed | Advances time by two hours, restores stamina and some health, and costs hunger |
+| Cooker | Converts spoiled meat to cooked meat while its building has an active generator |
+| Crafting bench | Opens fixed recipes for bandages, spiked bats, ammunition, and electronic parts |
+| Turret | Automatically attacks infected in range while its building has an active generator |
+| Generator | Powers cookers and turrets throughout its building; can be switched off |
+| Campfire | Can be built indoors or outdoors and cooks spoiled meat without electricity |
+| Radio center | Designates the building as the team base and opens individual team commands |
 
-1. Numeric statistics with the same name are added.
-2. Tags are combined without duplicates.
-3. Component histories are concatenated.
-4. The result name joins the two source names in selection order.
-5. The first available equipment slot and firearm ammunition type are retained.
-6. Category is inferred from the inputs, attack total, edibility, and medical tags.
+The removed free-form system no longer combines arbitrary items. Workbenches only expose declared recipes with fixed inputs and outputs.
 
-A result becomes a weapon if either source is a weapon or total attack exceeds 7. Otherwise a wearable source produces a wearable result. Otherwise a food-tagged result without `inedible` is food; the default is material. A medical tag changes a non-weapon, non-wearable result to medical.
+## team bases
 
-Tags never cancel each other. This is particularly important for `inedible` and `poisoned`: combining safe food with either property preserves the dangerous property.
+Only one building is the active team base. Placing another radio center in a different building moves the designation. Every basement, ground floor, and upper floor in the active base remains generated, pinned in memory, and simulated while the player is outdoors, underground, or inside another building. Infected continue moving and powered turrets continue defending remote base floors.
 
-Crafting immediately forces a save.
+## sewer network
+
+Every city block has street grates, and every generated basement has a grate. They connect to one deterministic underground network covering the full 128 × 128 city. Boundary tunnels, central cross-tunnels, and a chamber beneath every block guarantee that the entire network is connected.
+
+The sewer is a separate dark world layer with infected, combat, companion travel, blood, a minimap, and persistent defeated-enemy IDs. Any nearby grate can be used as an exit, so entering from a street and emerging in a different building's basement is supported.
 
 ## saves and death
 
 The browser stores one save per origin under `city_of_nothing_save_v1`.
 
-Saved progress includes location, interior floor, survival state, inventory, equipment, companions, encountered outdoor survivors, permanently lost survivor IDs, world time, play time, statistics, emptied containers, remaining container contents, and defeated infected IDs.
+Saved progress includes street/interior/sewer location, survival state, inventory, equipment, built furniture and stored items, the active base, companions and radio assignments, encountered outdoor survivors, permanently lost survivor IDs, world time, play time, statistics, emptied containers, remaining container contents, and defeated infected IDs.
 
 Transient infected movement, current health of living infected, blood, attack effects, camera shake, open panels, and audio state are not saved. When a zone is reconstructed, surviving infected return to their deterministic starting state.
 
@@ -208,12 +234,13 @@ Death pauses the run and leaves the last save untouched. **Return to last save**
 | Left `Shift` | Sprint |
 | Mouse | Aim |
 | Left click / `Space` | Attack |
-| `E` | Use the nearest interaction, including talking to survivors |
+| `E` | Use the nearest interaction or place selected furniture |
 | `Q` | Open group orders and shout to nearby companions |
 | `I` / `Tab` | Toggle inventory |
-| `C` | Toggle crafting |
+| `B` | Toggle furniture construction |
+| `R` | Rotate selected furniture |
 | `1` | Equip strongest weapon |
 | `2` | Eat best food |
 | `Esc` | Close panel |
 
-Touch mode provides an analog movement stick plus **use**, **attack**, and **orders** buttons. Inventory and crafting remain available from the quick bar.
+Touch mode provides an analog movement stick plus **use**, **attack**, and **orders** buttons. Inventory and furniture construction remain available from the quick bar.

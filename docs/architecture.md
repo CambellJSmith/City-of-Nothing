@@ -16,8 +16,8 @@ flowchart TD
 | Component | Responsibility |
 | --- | --- |
 | `Game` | Runtime state, input, animation loop, movement, collisions, infected and survivor AI, combat, conversations, recruitment, saves, HUD updates, and all drawing |
-| `World` | Deterministic districts, roads, blocks, buildings, trees, interiors, furniture, containers, and loot-table selection |
-| `Inventory` | Item ownership, equipment, ammunition, armor totals, consuming items, crafting, filtering, and inventory/crafting markup |
+| `World` | Deterministic districts, roads, blocks, buildings, trees, interiors, sewer geometry/access, generated furniture, containers, and loot-table selection |
+| `Inventory` | Item ownership, equipment, ammunition, armor totals, consuming items, filtering, and inventory markup |
 | `Sound` | Lazily created Web Audio context and synthesized one-shot tones |
 
 The final lines of `game.js` construct one `Game` instance. The constructor binds input, sizes the canvases, detects an existing save, initializes the HUD, and starts the `requestAnimationFrame` loop.
@@ -30,11 +30,14 @@ The top of `game.js` contains the data-driven content:
 - `road_names` supplies deterministic street names.
 - `survivor_names` and `survivor_lines` provide deterministic human identities and conversation text.
 - `group_orders` defines the player-facing shout, HUD state, and description for each tactical order.
+- `radio_missions` and `engagement_rules` define individual remote assignments and combat eagerness.
+- `furniture_catalog` defines construction size, cost, storage, power, and interaction behavior.
+- `workbench_recipes` declares every finite recipe and its exact inputs and output.
 - `building_names` supplies names for each building type.
 - `item_catalog` defines category, equipment slot, ammunition type, numeric statistics, tags, and description.
 - `loot_tables` maps a loot context to weighted item-name entries. Repeated names can be used to increase an item's probability.
 
-Runtime items are copies of catalog entries. Each item carries a stable ID, its current statistics, tags, component history, and descriptive fields. Crafted items therefore remain self-contained even if the catalog later changes.
+Runtime items are copies of catalog entries. Each item carries a stable ID, its current statistics, tags, source component, and descriptive fields. Recipe outputs therefore remain self-contained even if the catalog later changes.
 
 ## frame lifecycle
 
@@ -44,15 +47,15 @@ The update phase performs these operations:
 
 1. Advance play time and world time.
 2. Update movement, sprinting, stamina, collision, and facing.
-3. Generate or retrieve nearby human survivors, update their needs, tactical orders, movement, equipment choice, looting, and combat.
-4. Generate or retrieve nearby infected and update pursuit against the nearest living human.
-5. Age transient shot and melee effects.
-6. Drain player hunger and apply starvation damage.
-7. Find the nearest usable door, stair, exit, container, or survivor.
-8. Smooth the camera toward the player.
-9. Continue held-mouse attacks, refresh the HUD when needed, and request a rate-limited save.
+3. Advance remote teammate assignments.
+4. Generate or retrieve nearby human survivors, update their needs, tactical orders, movement, equipment choice, looting, and combat.
+5. Generate or retrieve nearby infected and update pursuit against the nearest living human.
+6. Update local built furniture and every pinned floor in the active radio base.
+7. Age transient effects, drain hunger, and apply starvation.
+8. Find the nearest transition, container, survivor, sewer grate, or built furnishing.
+9. Smooth the camera, refresh the HUD, and request a rate-limited save.
 
-Panels pause simulation. Rendering continues while paused so the game remains visible behind inventory, crafting, loot, survivor conversations, group orders, guide, and death UI.
+Panels pause simulation. Rendering continues while paused so the game remains visible behind inventory, construction, workbench, radio, loot, survivor conversations, group orders, guide, and death UI.
 
 ## deterministic world generation
 
@@ -66,6 +69,8 @@ The world uses a fixed numeric seed and stable hashes derived from grid coordina
 - Outdoor and indoor infected IDs are derived from block, building, floor, and index.
 - Outdoor survivor identities, names, loadouts, survival values, and dialogue are derived from block and index.
 - Container loot is generated from the container ID.
+- Every city block produces two deterministic street grates; every basement produces a deterministic basement grate.
+- Sewer openness is calculated from a global half-cell tunnel grid and central chambers rather than stored tiles.
 
 This separates immutable generated state from player-authored deltas. A save does not need to contain the city; it contains facts such as “this container was emptied” or “this infected ID was defeated.”
 
@@ -97,7 +102,9 @@ Generated identities follow readable formats:
 | Indoor infected | `infected:in:building_id:floor:index` |
 | Outdoor survivor | `survivor:out:block_key:index` |
 | Generated loot | `loot:container_id:index` |
-| Crafted item | Random UUID-style ID prefixed with `crafted_` |
+| Built furniture | Random UUID-style ID prefixed with `furniture_` |
+| Sewer infected | `infected:sewer:block_key:index` |
+| Radio-found item | `radio:survivor_id:mission_run:index` |
 
 Changing an ID formula, seed, generation order, or catalog name can change an existing save's relationship to regenerated content. Treat those values as part of the save compatibility contract.
 
@@ -112,12 +119,17 @@ Generated data is held in insertion-ordered maps and evicted from the oldest end
 | Outdoor infected zones | 60 | Rebuilt from block ID, excluding IDs in `killed` |
 | Indoor infected zones | No explicit cap | Retained for the active session |
 | Outdoor survivor zones | 120 in memory; last 80 serialized | Rebuilt from block ID unless recruited, lost, or restored from saved state |
+| Sewer infected zones | 80 | Rebuilt from block ID, excluding IDs in `killed` |
 
 The renderer only visits blocks intersecting the camera bounds. Active outdoor infected are limited to the player's surrounding 3 × 3 block neighborhood.
 
+Interior cache eviction skips keys in `World.pinned_interiors`. Placing a radio center pins every floor in that building and eagerly creates its interior and enemy cache. `update_base_floors()` advances off-screen infected and powered turrets once per second, while the current floor continues using the normal frame simulation.
+
+The sewer never allocates one city-sized tile map. `sewer_point_open()` determines whether a circle fits inside the connected boundary tunnels, cross-tunnels, or central chamber for its current block. Rendering and enemy generation only visit nearby blocks.
+
 ## movement and collision
 
-Player movement is resolved one axis at a time. Outdoors, circles are checked against nearby rectangular buildings and the city boundary. Indoors, the player is checked against the interior boundary and generated wall rectangles. Every interior template connects its rooms through protected doorways, galleries, cross-halls, or spines, while entry, exit, and stair clearances are kept free of walls, furniture, and infected spawn points. A blocked position from an older save is relocated to a safe transition point when the save loads.
+Player movement is resolved one axis at a time. Outdoors, circles are checked against nearby rectangular buildings and the city boundary. Indoors, the player is checked against the interior boundary, generated walls, and built furniture. Sewers use the analytic tunnel/chamber boundary. Every interior template connects its rooms through protected doorways, galleries, cross-halls, or spines, while entry, exit, stair, sewer-grate, and passage clearances are kept free of fixtures and infected spawn points. A blocked position from an older save is relocated to a safe transition point when the save loads.
 
 Infected and survivors use similar circle-versus-rectangle checks. When blocked, a roaming entity changes its wander direction rather than running pathfinding. Recruited survivors follow distinct formation targets and are safely repositioned around the player during entrances, exits, floor changes, save restoration, or extreme separation. Looting companions move toward reserved container positions and use the same stalled-movement recovery as formation travel.
 
@@ -155,13 +167,19 @@ Container targets are claimed by ID. A looter excludes IDs already reserved by a
 
 Shouting creates a short-lived presentation label, plays a synthesized voice-like cue, and calls the existing noise alert path. The label and sound are transient. Survivor order fields are persistent. Loot and hold tasks are reset to following during a building or floor transition because their positions are local to the previous scene.
 
+### radio mission model
+
+The active radio selects a companion by stable ID. An assignment records `radio_mission`, remaining `radio_time`, `radio_runs`, and `remote`. Remote companions are excluded from scene-local survivor lists, movement, rendering, and shouted-order recipients. `update_remote_team()` completes deterministic collection, transitions the teammate to `return`, and finally places them in safe formation space.
+
+Engagement is stored separately from tactical order. It caps or extends the distance at which the survivor considers an infected eligible, so the same teammate can be defensive or aggressive across follow, attack, hold, and later radio assignments.
+
 ## rendering pipeline
 
 The main canvas is rendered in CSS-pixel coordinates after applying the current device-pixel ratio:
 
 1. Clear the frame.
 2. Apply camera shake, zoom, and world translation.
-3. Draw the exterior city or the active interior.
+3. Draw the exterior city, active interior, or analytic sewer layer.
 4. Draw blood, human survivors, infected, transient attack effects, and the player.
 5. Restore screen coordinates.
 6. Draw the day/night or interior darkness overlay.
@@ -188,16 +206,19 @@ The save key is `city_of_nothing_save_v1`, and the serialized object declares `v
 | --- | --- |
 | `player` | Position, facing, health, stamina, hunger, and transient hurt timer |
 | `inside` | Building ID, floor, and interior-local position, or `null` |
+| `sewer` | Sewer world position, or `null` |
 | `inventory` | Full item records and equipment-slot-to-item-ID mapping |
 | `world_minutes` | In-game clock |
 | `play_time` | Active-session seconds used for autosave timing and statistics |
-| `stats` | Kills, items found, and items crafted |
+| `stats` | Kills, items found, and furniture built |
 | `looted` | IDs of fully emptied containers |
 | `killed` | Defeated infected IDs; only the most recent 4,000 are serialized |
 | `lost_survivors` | Survivor IDs that must not regenerate after death |
-| `companions` | Recruited survivor state, including needs, inventory, loadout, kills, tactical order, anchor, and reserved container ID |
+| `companions` | Recruited survivor state, including needs, inventory, loadout, kills, tactical order, engagement, radio assignment, anchor, and reserved container ID |
 | `outdoor_survivors` | Up to 80 recently encountered outdoor-zone survivor populations |
 | `container_items` | Map entries containing generated-but-not-yet-taken loot |
+| `built_furniture` | Map entries containing player-built furnishings for each street or building floor |
+| `base` | Active building ID and radio furniture ID |
 
 Autosaves are skipped when the game has not started, the player is dead, or fewer than eight active play seconds have passed since the previous non-forced save. Forced saves occur at important state transitions and on `beforeunload`.
 
@@ -212,6 +233,6 @@ globalThis.city_of_nothing
 globalThis.city_of_nothing_test
 ```
 
-`city_of_nothing` is the live `Game` instance. `city_of_nothing_test` contains item helpers, content catalogs, group-order definitions, interior-template data, combat constants, survivor-AI constants, and city geometry for console inspection or lightweight automated tests.
+`city_of_nothing` is the live `Game` instance. `city_of_nothing_test` contains item helpers, content catalogs, construction, workbench, radio and engagement definitions, interior-template data, combat constants, survivor-AI constants, city geometry, and sewer geometry for console inspection or lightweight automated tests.
 
 These globals are developer interfaces, not isolated security boundaries. Do not place secrets in the game or trust browser state as authoritative.

@@ -259,6 +259,30 @@ function assert_ground_floor_orientation(layout, building) {
   assert.ok(Math.abs(layout.exit[expected.exit.axis] - expected.exit.value) < .001, `${building.id} interior exit faces ${building.road_side}`);
 }
 
+function add_material_cost(cost) {
+  for (const [name, count] of Object.entries(cost)) {
+    for (let index = 0; index < count; index += 1) game.inventory.add(api.make_item(name), false);
+  }
+}
+
+function place_test_furniture(type) {
+  const definition = api.furniture_catalog[type];
+  add_material_cost(definition.cost);
+  game.build_type = type;
+  game.build_rotation = 0;
+  const layout = game.layout();
+  for (let y = 90; y < layout.height - 90; y += 24) {
+    for (let x = 90; x < layout.width - 90; x += 24) {
+      game.player.x = x - api.construction.build_reach;
+      game.player.y = y;
+      game.player.angle = 0;
+      const preview = game.build_preview();
+      if (game.can_place_built_furniture(preview)) return game.place_built_furniture();
+    }
+  }
+  assert.fail(`could not find construction space for ${type}`);
+}
+
 assert.ok(game, "game initializes");
 assert.equal(ids.length, new Set(ids).size, "HTML ids are unique");
 const script_version = html.match(/<script src="game\.js\?v=([^"]+)"><\/script>/)?.[1];
@@ -278,11 +302,25 @@ assert.ok(api.survivor_ai.names.length >= 20, "survivors use a varied determinis
 assert.match(html, /id="survivor_overlay"/, "survivor conversations have a dedicated interface");
 assert.match(html, /invite to join your group/, "survivors can be invited from conversation");
 assert.match(html, /id="orders_overlay"/, "group shouts have a dedicated command interface");
+assert.match(html, /id="building_overlay"/, "furniture construction has a dedicated interface");
+assert.match(html, /id="radio_overlay"/, "base radio commands have a dedicated interface");
+assert.match(html, /id="workbench_overlay"/, "crafting benches use a fixed-recipe interface");
+assert.doesNotMatch(`${html}\n${source}`, /combine_items|craft_ids|any two items|crafting_overlay/, "the infinite any-two-item crafting system is removed");
 assert.match(html, /attack everything you can/, "the command interface includes an aggressive attack order");
 assert.match(html, /stay with me/, "the command interface includes a close formation order");
 assert.match(html, /loot all nearby containers/, "the command interface includes a container looting order");
 assert.match(html, /hold this position/, "the command interface includes a defensive hold order");
 assert.deepEqual(Object.keys(api.group_orders).sort(), ["attack", "follow", "hold", "loot"], "the survivor AI exposes every supported group order");
+assert.deepEqual(Object.keys(api.furniture_catalog).sort(), ["bed", "campfire", "chest", "cooker", "crafting_bench", "cupboard", "generator", "radio_center", "shelf", "turret"], "every requested furniture type is buildable");
+assert.deepEqual(Object.keys(api.radio_missions).sort(), ["explore", "food", "junk", "medicine", "return", "weapons"], "the radio supports every requested field assignment");
+assert.deepEqual(Object.keys(api.engagement_rules).sort(), ["aggressive", "avoid", "defensive", "normal"], "radio engagement rules cover passive through aggressive behavior");
+for (const definition of Object.values(api.furniture_catalog)) {
+  for (const material of Object.keys(definition.cost)) assert.ok(api.item_catalog[material], `${definition.name} uses a real inventory material`);
+}
+for (const recipe of Object.values(api.workbench_recipes)) {
+  assert.ok(api.item_catalog[recipe.result], `${recipe.name} produces a catalog item`);
+  for (const material of Object.keys(recipe.cost)) assert.ok(api.item_catalog[material], `${recipe.name} uses a real inventory item`);
+}
 assert.ok(api.survivor_ai.shout_range > api.survivor_ai.notice_range, "voice commands reach a useful nearby group radius");
 const interior_templates = Object.values(api.interior_template_catalog).flat();
 assert.ok(interior_templates.length >= 350, "the interior catalog contains hundreds of base templates");
@@ -397,40 +435,12 @@ assert.doesNotThrow(() => elements.get("new_game_button").click(), "new game sta
 assert.equal(game.started, true, "storage restrictions do not block a new run");
 storage_locked = false;
 
-game.inventory.craft_ids = [];
-game.inventory.render_crafting();
-let craft_buttons = elements.get("craft_inventory").querySelectorAll("[data-item]");
-assert.ok(craft_buttons.length >= 2, "crafting renders selectable inventory cards");
-craft_buttons[0].click();
-craft_buttons = elements.get("craft_inventory").querySelectorAll("[data-item]");
-craft_buttons[1].click();
-assert.deepEqual([...game.inventory.craft_ids], [game.inventory.items[0].id, game.inventory.items[1].id], "two different crafting items can be selected");
-assert.equal(elements.get("craft_button").disabled, false, "crafting enables after two items are selected");
-game.inventory.craft_ids = [];
-game.inventory.render_crafting();
-
-const soup_apple = api.combine_items(api.make_item("canned soup"), api.make_item("apple"), true);
-assert.equal(soup_apple.name, "canned soup apple");
-assert.equal(soup_apple.stats.food, 38);
-assert.ok(soup_apple.tags.includes("food"));
-assert.ok(!soup_apple.tags.includes("inedible"));
-
-const hammer_bat = api.combine_items(api.make_item("hammer"), api.make_item("baseball bat"), true);
-assert.equal(hammer_bat.name, "hammer baseball bat");
-assert.equal(hammer_bat.stats.attack, 38);
-assert.deepEqual([...hammer_bat.components], ["hammer", "baseball bat"]);
-
-const three_part = api.combine_items(hammer_bat, api.make_item("kitchen knife"), true);
-assert.equal(three_part.components.length, 3, "crafted components remain flat");
-assert.equal(three_part.stats.attack, 52);
-
-const gun_apple = api.combine_items(api.make_item("9mm pistol"), api.make_item("apple"), true);
-assert.ok(gun_apple.tags.includes("inedible"), "inedible is inherited");
-assert.equal(gun_apple.category, "weapon", "blocking weapon capability wins");
-
-const poison_soup = api.combine_items(api.make_item("gasoline"), api.make_item("canned soup"), true);
-assert.ok(poison_soup.tags.includes("poisoned"), "poisoned is inherited");
-assert.ok(poison_soup.tags.includes("inedible"), "inedible remains permanent");
+game.inventory.add(api.make_item("cloth"), false);
+const cloth_before_recipe = game.item_count("cloth");
+assert.equal(game.craft_recipe("bandage"), true, "a fixed workbench recipe can be crafted");
+assert.equal(game.item_count("cloth"), cloth_before_recipe - 2, "fixed recipes consume their listed materials");
+assert.ok(game.inventory.items.some((item) => item.name === "bandage"), "fixed recipes produce their declared item");
+assert.equal(api.combine_items, undefined, "the infinite item-combining function is no longer exposed");
 
 const supply_survivor = game.new_survivor("survivor:test:supplies", 0, 0, () => .5, "test");
 supply_survivor.items = [api.make_item("baseball bat"), api.make_item("energy bar"), api.make_item("medical kit")];
@@ -552,6 +562,46 @@ assert.equal(game.inside.building.id, building.id, "building entry works");
 assert.equal(game.inside.floor, 0, "entry begins on ground floor");
 assert.ok(point_is_walkable(game.layout(), game.companions[0].x, game.companions[0].y, api.survivor_ai.radius), "companions enter buildings in open floor space");
 assert.ok(game.layout().containers.length > 0, "interiors have searchable containers");
+const built_chest = place_test_furniture("chest");
+assert.equal(built_chest.type, "chest", "the construction system places selected furniture");
+assert.ok(game.built_at().includes(built_chest), "constructed furniture belongs to the current floor");
+assert.equal(game.container_items.get(built_chest.id).length, 0, "built storage starts empty");
+const stored_item = game.inventory.items.find((item) => item.id !== game.inventory.equipment.weapon);
+game.open_container(built_chest);
+game.store(stored_item.id);
+assert.ok(game.container_items.get(built_chest.id).some((item) => item.id === stored_item.id), "items can be stored in built furniture");
+game.take(stored_item.id);
+assert.ok(game.inventory.items.some((item) => item.id === stored_item.id), "stored items can be taken back");
+game.close_panels();
+for (const type of Object.keys(api.furniture_catalog).filter((candidate) => !["chest", "radio_center"].includes(candidate))) {
+  const built = place_test_furniture(type);
+  assert.equal(built.type, type, `${api.furniture_catalog[type].name} can be constructed through the shared placement system`);
+  const floor_items = game.built_at();
+  floor_items.splice(floor_items.indexOf(built), 1);
+  game.container_items.delete(built.id);
+}
+
+const built_radio = place_test_furniture("radio_center");
+assert.equal(game.base.building_id, building.id, "placing a radio center designates its building as the team base");
+assert.equal(game.base.radio_id, built_radio.id, "the active base records its radio center");
+const base_floor_count = building.floors + building.basements;
+assert.ok([...game.world.pinned_interiors].filter((key) => key.startsWith(`${building.id}:`)).length === base_floor_count, "every base floor is pinned in memory");
+for (let floor = -building.basements; floor < building.floors; floor += 1) {
+  assert.ok(game.world.interiors.has(`${building.id}:${floor}`), `base floor ${floor} stays loaded`);
+  assert.ok(game.indoor_enemies.has(`${building.id}:${floor}`), `base floor ${floor} has an active entity cache`);
+}
+game.active_radio_member_id = recruit.id;
+assert.equal(game.set_radio_engagement("aggressive"), true, "the radio changes a teammate's combat engagement");
+assert.equal(recruit.engagement, "aggressive", "radio engagement persists on the teammate");
+const radio_inventory_before = recruit.items.length;
+assert.equal(game.issue_radio_mission("food"), true, "the radio sends any selected teammate on a supply assignment");
+assert.equal(recruit.remote, true, "assigned teammates leave the local travelling group");
+assert.ok(!game.active_survivors().includes(recruit), "remote teammates are not simulated on top of the player");
+game.update_remote_team(api.radio_missions.food.duration + 1);
+assert.equal(recruit.radio_mission, "return", "completed collectors automatically start returning");
+assert.ok(recruit.items.length > radio_inventory_before, "collectors return with supplies from the requested category");
+game.update_remote_team(api.radio_missions.return.duration + 1);
+assert.equal(recruit.remote, false, "returning teammates rejoin the travelling group");
 assert.equal(game.issue_group_order("loot"), 1, "nearby companions receive a container-looting order");
 const ordered_container = game.layout().containers[0];
 const carried_before_looting = game.companions[0].items.length;
@@ -571,6 +621,34 @@ game.exit();
 assert.equal(game.inside, null, "building exit returns the group outdoors");
 assert.ok(Math.hypot(game.companions[0].x - game.player.x, game.companions[0].y - game.player.y) < 180, "companions regroup after leaving a building");
 assert.equal(game.companions[0].order, "follow", "scene-local loot orders reset after a world transition");
+const pinned_before_remote_tick = [...game.world.pinned_interiors].filter((key) => key.startsWith(`${building.id}:`)).length;
+game.update_base_floors(1.1);
+assert.equal([...game.world.pinned_interiors].filter((key) => key.startsWith(`${building.id}:`)).length, pinned_before_remote_tick, "all base floors remain loaded while the player is outside");
+
+const street_grate = first_block.grates[0];
+assert.ok(game.world.sewer_point_open(street_grate.sewer_x, street_grate.sewer_y, 18), "street grates connect to open sewer floor");
+game.enter_sewer(street_grate);
+assert.equal(game.sewer, true, "street grates enter the sewer network");
+assert.equal(game.inside, null, "the sewer is a distinct world layer");
+assert.ok(game.active_enemies().every((enemy) => game.world.sewer_point_open(enemy.x, enemy.y, enemy.radius)), "sewer infected spawn inside connected tunnels and chambers");
+let basement_access = null;
+for (let y = -8; y <= 8 && !basement_access; y += 1) {
+  for (let x = -8; x <= 8 && !basement_access; x += 1) {
+    const candidate = game.world.block(x, y).buildings.find((item) => item.basements > 0);
+    if (candidate) basement_access = game.world.basement_sewer_access(candidate);
+  }
+}
+assert.ok(basement_access, "the city has basement sewer connections");
+assert.ok(game.world.sewer_point_open(basement_access.sewer_x, basement_access.sewer_y, 18), "basement access joins the same sewer network");
+game.player.x = basement_access.sewer_x;
+game.player.y = basement_access.sewer_y;
+game.leave_sewer(basement_access);
+assert.equal(game.sewer, false, "a sewer exit leaves the underground layer");
+assert.equal(game.inside.building.id, basement_access.building.id, "the connected sewer can be exited through another building's basement");
+assert.equal(game.inside.floor, basement_access.floor, "basement sewer exits arrive on the correct floor");
+assert.ok(point_is_walkable(game.layout(), game.player.x, game.player.y), "basement sewer arrival is clear");
+game.change_floor(1);
+game.exit();
 game.enter(building);
 game.issue_group_order("attack");
 game.render();
@@ -581,12 +659,17 @@ assert.ok(saved.inventory.items.length >= 5, "inventory persists");
 assert.equal(saved.inside.building_id, building.id, "interior position persists");
 assert.equal(saved.companions.length, 1, "recruited companions persist in saves");
 assert.equal(saved.companions[0].order, "attack", "persistent group orders are included in companion saves");
+assert.equal(saved.companions[0].engagement, "aggressive", "radio engagement rules persist in saves");
+assert.equal(saved.base.building_id, building.id, "the radio-designated base persists");
+assert.ok(saved.built_furniture.some(([key, items]) => key.startsWith(`${building.id}:`) && items.some((item) => item.id === built_radio.id)), "constructed furniture persists");
 game.player.health = 2;
 game.continue();
 assert.equal(game.player.health, saved.player.health, "continue restores the saved player");
 assert.equal(game.companions.length, 1, "continue restores the player's group");
 assert.equal(game.companions[0].id, recruit.id, "continue restores the same recruited survivor");
 assert.equal(game.companions[0].order, "attack", "continue restores the companion's tactical order");
+assert.equal(game.base.building_id, building.id, "continue restores and reactivates the team base");
+assert.ok(game.world.pinned_interiors.has(`${building.id}:0`), "restored bases pin their floors immediately");
 const blocked_save = JSON.parse(JSON.stringify(saved));
 const blocking_wall = game.layout().walls[0];
 blocked_save.inside.x = blocking_wall.x + blocking_wall.w * .5;
@@ -606,7 +689,13 @@ const generated_exterior_variants = new Set();
 let determinism_checked = false;
 for (let y = -64; y < 64; y += 1) {
   for (let x = -64; x < 64; x += 1) {
-    for (const generated of game.world.block(x, y).buildings) {
+    const generated_block = game.world.block(x, y);
+    assert.equal(generated_block.grates.length, 2, `city block ${x},${y} has street sewer access`);
+    for (const grate of generated_block.grates) assert.ok(game.world.sewer_point_open(grate.sewer_x, grate.sewer_y, 18), `${grate.id} opens onto the connected sewer`);
+    assert.ok(game.world.sewer_point_open((x + .5) * api.city_geometry.cell, (y + .5) * api.city_geometry.cell, 18), `sewer chamber ${x},${y} is open`);
+    const connected_grid_x = (x === -api.city_geometry.radius ? x + 1 : x) * api.city_geometry.cell;
+    assert.ok(game.world.sewer_point_open(connected_grid_x, (y + .5) * api.city_geometry.cell, 18), `sewer chamber ${x},${y} connects to the city grid`);
+    for (const generated of generated_block.buildings) {
       building_types.add(generated.type);
       generated_road_sides.add(generated.road_side);
       generated_exterior_variants.add(generated.exterior_variant);
@@ -642,6 +731,12 @@ for (const [type, buildings] of representative_buildings) {
       assert.ok(layout.containers.length >= 5, `${label} retains useful searchable loot`);
       assert_interior_connected(layout, template_label);
       if (floor === 0) assert_ground_floor_orientation(layout, generated);
+      if (floor < 0) {
+        assert.ok(layout.sewer_grate, `${label} has a sewer grate`);
+        assert.ok(point_is_walkable(layout, layout.sewer_grate.x, layout.sewer_grate.y), `${label} sewer grate has clear basement access`);
+        const access = game.world.basement_sewer_access(generated);
+        assert.ok(game.world.sewer_point_open(access.sewer_x, access.sewer_y, 18), `${label} connects into the city-wide sewer`);
+      }
       if (!determinism_checked) {
         const first_generation = JSON.stringify(layout);
         game.world.interiors.delete(layout.key);

@@ -594,90 +594,139 @@ button:focus-visible {
   color: var(--ink);
 }
 
-.craft_layout {
+.building_layout {
   display: grid;
-  min-height: 0;
-  flex: 1;
-  grid-template-columns: 1fr 360px;
-  grid-template-rows: 1fr auto;
+  gap: 18px;
+  padding: 22px;
+  overflow: auto;
 }
 
-.craft_picker {
-  min-height: 0;
-  padding: 18px;
-  border-right: 1px solid var(--line);
-}
-
-.craft_picker > p {
-  margin: 0 0 14px;
+.building_layout > p,
+#workbench_status,
+#radio_status {
+  margin: 0;
   color: var(--muted);
   font-size: 9px;
   line-height: 1.7;
-}
-
-#craft_inventory {
-  max-height: calc(100% - 48px);
-  padding: 0;
-}
-
-.equation {
-  display: grid;
-  gap: 8px;
-  align-content: center;
-  padding: 20px;
-}
-
-.equation > b {
-  color: var(--faint);
-  font-size: 18px;
-  font-weight: normal;
-  text-align: center;
-}
-
-.craft_slot {
-  display: grid;
-  min-height: 78px;
-  padding: 12px;
-  place-items: center;
-  border: 1px dashed var(--line);
-  color: var(--faint);
-  font-size: 8px;
-  text-align: center;
   text-transform: uppercase;
 }
 
-.craft_slot.filled {
-  border-style: solid;
-  border-color: var(--hot_line);
+.build_catalog,
+.recipe_list,
+.command_grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.build_catalog button,
+.recipe_list button,
+.command_grid button,
+#radio_members button,
+#container_store_items button {
+  display: grid;
+  gap: 5px;
+  min-height: 58px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: #101311;
   color: var(--ink);
+  text-align: left;
+  cursor: pointer;
 }
 
-.craft_slot.result.filled {
+.build_catalog button:hover,
+.recipe_list button:hover,
+.command_grid button:hover,
+#radio_members button:hover,
+#radio_members button.selected,
+#container_store_items button:hover {
+  border-color: var(--hot_line);
   background: rgba(207, 222, 147, 0.08);
-  color: var(--acid);
 }
 
-.craft_slot strong {
-  display: block;
+.build_catalog button:disabled,
+.recipe_list button:disabled {
+  opacity: 0.34;
+  cursor: not-allowed;
+}
+
+.build_catalog strong,
+.recipe_list strong,
+#radio_members strong {
+  color: var(--acid);
   font-family: Impact, "Arial Narrow", sans-serif;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: normal;
   letter-spacing: 0.03em;
+  text-transform: uppercase;
 }
 
-.craft_slot small {
-  display: block;
-  margin-top: 7px;
+.build_catalog span,
+.recipe_list span,
+#radio_members span {
   color: var(--muted);
+  font-size: 8px;
+  line-height: 1.4;
+  text-transform: uppercase;
 }
 
-.craft_layout > footer {
-  display: flex;
-  grid-column: 1 / -1;
-  justify-content: flex-end;
-  gap: 8px;
-  padding: 14px 18px;
+.recipe_list,
+#workbench_status {
+  margin: 16px;
+}
+
+.radio_layout {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  grid-template-columns: 260px 1fr;
+}
+
+#radio_members {
+  display: grid;
+  align-content: start;
+  gap: 7px;
+  padding: 16px;
+  border-right: 1px solid var(--line);
+  overflow: auto;
+}
+
+.radio_commands {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  padding: 20px;
+  overflow: auto;
+}
+
+.radio_commands .eyebrow {
+  margin-top: 6px;
+}
+
+#container_store {
+  padding: 0 14px 14px;
   border-top: 1px solid var(--line);
+}
+
+#container_store > .eyebrow {
+  display: block;
+  margin: 14px 0 8px;
+}
+
+#container_store_items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 150px;
+  overflow: auto;
+}
+
+#container_store_items button {
+  min-height: 34px;
+  padding: 8px 10px;
+  font-size: 8px;
+  text-transform: uppercase;
 }
 
 .compact {
@@ -1070,13 +1119,11 @@ button:focus-visible {
     display: none;
   }
 
-  .inventory_layout,
-  .craft_layout {
+  .inventory_layout {
     grid-template-columns: 1fr;
   }
 
-  #item_inspector,
-  .equation {
+  #item_inspector {
     display: none;
   }
 
@@ -1084,12 +1131,20 @@ button:focus-visible {
     grid-template-columns: repeat(2, minmax(130px, 1fr));
   }
 
-  .craft_picker {
-    border: 0;
-  }
-
   .start_copy {
     margin-right: 0;
+  }
+
+  .radio_layout {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  #radio_members {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 }
 
@@ -1147,6 +1202,13 @@ button:focus-visible {
   .overlay {
     width: calc(100vw - 20px);
     height: calc(100vh - 20px);
+  }
+
+  .build_catalog,
+  .recipe_list,
+  .command_grid,
+  #radio_members {
+    grid-template-columns: 1fr;
   }
 
   #touch_controls {
