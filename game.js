@@ -8,6 +8,12 @@ const SURVIVOR_RADIUS = 17;
 const SURVIVOR_NOTICE_RANGE = 680;
 const SURVIVOR_FOLLOW_DISTANCE = 72;
 const SURVIVOR_MELEE_REACH = 12;
+const SURVIVOR_SHOUT_RANGE = 900;
+const SURVIVOR_ATTACK_RANGE = 1500;
+const SURVIVOR_GUARD_RANGE = 420;
+const SURVIVOR_LOOT_DANGER_RANGE = 280;
+const SURVIVOR_LOOT_RANGE = 900;
+const SURVIVOR_LOOT_REACH = 58;
 const INFECTED_MELEE_REACH = 16;
 const INFECTED_ATTACK_TIME = .18;
 const USE_RANGE = 76;
@@ -43,6 +49,13 @@ const survivor_lines = [
   "i have supplies and a weapon. both are better shared.",
   "this city is too quiet until it suddenly is not.",
 ];
+
+const group_orders = {
+  follow: { shout: "stay with me", hud: "following", description: "stay in formation and only fight threats close to the group" },
+  attack: { shout: "attack everything you can", hud: "attacking", description: "hunt every infected you can reach in the surrounding area" },
+  loot: { shout: "loot all nearby containers", hud: "looting", description: "search nearby containers, divide the work, and carry what you find" },
+  hold: { shout: "hold this position", hud: "holding", description: "hold your ground and fight infected that enter the area" },
+};
 
 const building_names = {
   house: ["rowan house", "ashdown home", "bell residence", "mercy terrace"],
@@ -1114,6 +1127,8 @@ class Game {
     this.outdoor_survivors = new Map();
     this.companions = [];
     this.active_survivor = null;
+    this.command_text = "";
+    this.command_time = 0;
     this.stats = { kills: 0, found: 0, crafted: 0 };
     this.shots = [];
     this.swings = [];
@@ -1167,12 +1182,19 @@ class Game {
       color: ["#8fa9a0", "#b39b78", "#9d8eae", "#9fae7c", "#aa8178"][Math.floor(random() * 5)],
       line: survivor_lines[Math.floor(random() * survivor_lines.length)],
       kills: 0,
+      order: "follow",
+      order_x: x,
+      order_y: y,
+      order_target_id: null,
     };
   }
 
   restore_survivor(data, recruited) {
     const saved_x = Number(data?.x);
     const saved_y = Number(data?.y);
+    const order = Object.hasOwn(group_orders, data?.order) ? data.order : "follow";
+    const order_x = Number(data?.order_x);
+    const order_y = Number(data?.order_y);
     const survivor = {
       id: data?.id ?? uid("survivor"),
       name: data?.name ?? "survivor",
@@ -1197,6 +1219,10 @@ class Game {
       color: data?.color ?? "#8fa9a0",
       line: data?.line ?? survivor_lines[0],
       kills: Math.max(0, Number(data?.kills) || 0),
+      order,
+      order_x: Number.isFinite(order_x) ? order_x : (Number.isFinite(saved_x) ? saved_x : this.player.x),
+      order_y: Number.isFinite(order_y) ? order_y : (Number.isFinite(saved_y) ? saved_y : this.player.y),
+      order_target_id: typeof data?.order_target_id === "string" ? data.order_target_id : null,
     };
     if (!survivor.items.some((item) => item.id === survivor.weapon_id)) survivor.weapon_id = null;
     return survivor;
@@ -1219,6 +1245,10 @@ class Game {
       color: survivor.color,
       line: survivor.line,
       kills: survivor.kills,
+      order: survivor.order,
+      order_x: survivor.order_x,
+      order_y: survivor.order_y,
+      order_target_id: survivor.order_target_id,
     };
   }
 
@@ -1254,6 +1284,10 @@ class Game {
     dom.craft_button.addEventListener("click", () => this.inventory.craft());
     dom.take_all.addEventListener("click", () => this.take_all());
     dom.invite_survivor.addEventListener("click", () => this.invite_active_survivor());
+    dom.order_follow.addEventListener("click", () => this.issue_group_order("follow"));
+    dom.order_attack.addEventListener("click", () => this.issue_group_order("attack"));
+    dom.order_loot.addEventListener("click", () => this.issue_group_order("loot"));
+    dom.order_hold.addEventListener("click", () => this.issue_group_order("hold"));
     this.bind_touch();
   }
 
@@ -1277,15 +1311,17 @@ class Game {
     stick.addEventListener("pointercancel", stop);
     dom.touch_use.addEventListener("pointerdown", () => this.use());
     dom.touch_attack.addEventListener("pointerdown", () => this.attack());
+    dom.touch_orders.addEventListener("pointerdown", () => this.toggle_group_orders());
   }
 
   key_down(event) {
     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab"].includes(event.code)) event.preventDefault();
-    if (event.repeat && ["KeyE", "KeyI", "KeyC", "Escape", "Digit1", "Digit2"].includes(event.code)) return;
+    if (event.repeat && ["KeyE", "KeyI", "KeyC", "KeyQ", "Escape", "Digit1", "Digit2"].includes(event.code)) return;
     this.keys.add(event.code);
     if (event.code === "KeyE") this.use();
     else if (event.code === "KeyI" || event.code === "Tab") this.toggle_inventory();
     else if (event.code === "KeyC") this.toggle_crafting();
+    else if (event.code === "KeyQ") this.toggle_group_orders();
     else if (event.code === "Digit1") this.inventory.best_weapon();
     else if (event.code === "Digit2") this.inventory.best_food();
     else if (event.code === "Space") this.attack();
@@ -1305,7 +1341,8 @@ class Game {
     if (action === "weapon") this.inventory.best_weapon();
     else if (action === "food") this.inventory.best_food();
     else if (action === "inventory") this.toggle_inventory();
-    else this.toggle_crafting();
+    else if (action === "crafting") this.toggle_crafting();
+    else this.toggle_group_orders();
   }
 
   resize() {
@@ -1340,6 +1377,8 @@ class Game {
     this.outdoor_survivors.clear();
     this.companions = [];
     this.active_survivor = null;
+    this.command_text = "";
+    this.command_time = 0;
     this.stats = { kills: 0, found: 0, crafted: 0 };
     this.started = true;
     this.dead = false;
@@ -1371,6 +1410,8 @@ class Game {
     const unavailable_survivors = new Set([...this.lost_survivors, ...this.companions.map((survivor) => survivor.id)]);
     for (const [key, survivors] of this.outdoor_survivors) this.outdoor_survivors.set(key, survivors.filter((survivor) => !unavailable_survivors.has(survivor.id)));
     this.active_survivor = null;
+    this.command_text = "";
+    this.command_time = 0;
     this.inside = null;
     if (data.inside?.building_id) {
       const building = this.find_building(data.inside.building_id);
@@ -1464,6 +1505,53 @@ class Game {
     }
   }
 
+  toggle_group_orders() {
+    if (!this.started || this.dead) return;
+    const open = dom.orders_overlay.hidden;
+    this.close_panels();
+    if (!open) return;
+    const living = this.companions.filter((survivor) => !survivor.dead);
+    if (!living.length) {
+      this.toast("you have no teammates to order", true);
+      return;
+    }
+    const nearby = this.nearby_companions();
+    dom.orders_summary.textContent = `${nearby.length} of ${living.length} teammate${living.length === 1 ? "" : "s"} close enough to hear`;
+    dom.orders_overlay.hidden = false;
+    this.paused = true;
+  }
+
+  nearby_companions() {
+    return this.companions.filter((survivor) => !survivor.dead && distance_sq(this.player.x, this.player.y, survivor.x, survivor.y) <= SURVIVOR_SHOUT_RANGE ** 2);
+  }
+
+  issue_group_order(order) {
+    const command = group_orders[order];
+    if (!command || !this.started || this.dead) return 0;
+    const recipients = this.nearby_companions();
+    if (!recipients.length) {
+      this.close_panels();
+      this.toast("no teammates were close enough to hear", true);
+      return 0;
+    }
+    for (const survivor of recipients) {
+      survivor.order = order;
+      survivor.order_x = order === "hold" ? survivor.x : this.player.x;
+      survivor.order_y = order === "hold" ? survivor.y : this.player.y;
+      survivor.order_target_id = null;
+      survivor.stuck_time = 0;
+    }
+    this.command_text = command.shout.toUpperCase();
+    this.command_time = 1.8;
+    this.alert_at(this.player.x, this.player.y, SURVIVOR_SHOUT_RANGE * .72);
+    this.sound.tone(180, .11, .035, "square", -45);
+    this.close_panels();
+    this.toast(`you shout "${command.shout}" · ${recipients.length} heard`);
+    this.update_hud();
+    this.save(true);
+    return recipients.length;
+  }
+
   close_panels() {
     document.querySelectorAll(".overlay").forEach((panel) => panel.hidden = true);
     this.active_container = null;
@@ -1491,6 +1579,7 @@ class Game {
   update(delta) {
     this.play_time += delta;
     this.world_minutes += delta * .75;
+    this.command_time = Math.max(0, this.command_time - delta);
     this.player.hurt_time = Math.max(0, this.player.hurt_time - delta);
     this.update_player(delta);
     this.update_survivors(delta);
@@ -1649,20 +1738,94 @@ class Game {
       this.survivor_use_supplies(survivor);
       if (survivor.hunger <= 0) this.damage_survivor(survivor, 1.2 * delta, true);
       if (survivor.dead) continue;
-      let target = null;
-      let nearest = SURVIVOR_NOTICE_RANGE ** 2;
-      for (const enemy of enemies) {
-        if (enemy.dead) continue;
-        const distance = distance_sq(survivor.x, survivor.y, enemy.x, enemy.y);
-        if (distance < nearest) {
-          nearest = distance;
-          target = enemy;
-        }
-      }
+      const target = this.survivor_target(survivor, enemies);
       if (target) this.update_survivor_combat(survivor, target, delta);
+      else if (survivor.recruited && survivor.order === "loot") this.update_survivor_loot(survivor, delta);
+      else if (survivor.recruited && survivor.order === "hold") this.update_survivor_hold(survivor, delta);
       else if (survivor.recruited) this.follow_group(survivor, this.companions.indexOf(survivor), delta);
       else this.wander_survivor(survivor, delta);
     }
+  }
+
+  survivor_target(survivor, enemies) {
+    let target = null;
+    let nearest = Infinity;
+    for (const enemy of enemies) {
+      if (enemy.dead) continue;
+      const distance = distance_sq(survivor.x, survivor.y, enemy.x, enemy.y);
+      let eligible = distance <= SURVIVOR_NOTICE_RANGE ** 2;
+      if (survivor.recruited && survivor.order === "attack") eligible = distance <= SURVIVOR_ATTACK_RANGE ** 2;
+      else if (survivor.recruited && survivor.order === "follow") {
+        const close_to_player = distance_sq(this.player.x, this.player.y, enemy.x, enemy.y) <= SURVIVOR_GUARD_RANGE ** 2;
+        const keeping_up = distance_sq(this.player.x, this.player.y, survivor.x, survivor.y) <= (SURVIVOR_FOLLOW_DISTANCE * 3.5) ** 2;
+        eligible = close_to_player && keeping_up;
+      } else if (survivor.recruited && survivor.order === "loot") eligible = distance <= SURVIVOR_LOOT_DANGER_RANGE ** 2;
+      else if (survivor.recruited && survivor.order === "hold") eligible = distance_sq(survivor.order_x, survivor.order_y, enemy.x, enemy.y) <= SURVIVOR_GUARD_RANGE ** 2;
+      if (eligible && distance < nearest) {
+        nearest = distance;
+        target = enemy;
+      }
+    }
+    return target;
+  }
+
+  update_survivor_loot(survivor, delta) {
+    if (!this.inside) {
+      survivor.order = "follow";
+      survivor.order_target_id = null;
+      return;
+    }
+    const layout = this.layout();
+    let target = layout.containers.find((container) => container.id === survivor.order_target_id && !this.looted.has(container.id));
+    if (!target) {
+      const reserved = new Set(this.companions.filter((companion) => companion !== survivor && companion.order === "loot").map((companion) => companion.order_target_id).filter(Boolean));
+      let nearest = Infinity;
+      for (const container of layout.containers) {
+        const x = container.x + container.w * .5;
+        const y = container.y + container.h * .5;
+        if (this.looted.has(container.id) || reserved.has(container.id) || distance_sq(survivor.order_x, survivor.order_y, x, y) > SURVIVOR_LOOT_RANGE ** 2) continue;
+        const distance = distance_sq(survivor.x, survivor.y, x, y);
+        if (distance < nearest) {
+          nearest = distance;
+          target = container;
+        }
+      }
+      survivor.order_target_id = target?.id ?? null;
+    }
+    if (!target) {
+      survivor.order = "follow";
+      survivor.order_target_id = null;
+      return;
+    }
+    const target_x = target.x + target.w * .5;
+    const target_y = target.y + target.h * .5;
+    const dx = target_x - survivor.x;
+    const dy = target_y - survivor.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance <= SURVIVOR_LOOT_REACH) {
+      this.survivor_loot_container(survivor, target);
+      return;
+    }
+    survivor.angle = Math.atan2(dy, dx);
+    const step = Math.min(distance - SURVIVOR_LOOT_REACH, survivor.speed * 1.15 * delta);
+    const moved = this.move_survivor_toward(survivor, dx / distance * step, dy / distance * step);
+    survivor.stuck_time = moved ? 0 : survivor.stuck_time + delta;
+    if (survivor.stuck_time > 2.25) {
+      const position = this.find_survivor_space(target_x, target_y, survivor);
+      survivor.x = position.x;
+      survivor.y = position.y;
+      survivor.stuck_time = 0;
+    }
+  }
+
+  update_survivor_hold(survivor, delta) {
+    const dx = survivor.order_x - survivor.x;
+    const dy = survivor.order_y - survivor.y;
+    const distance = Math.hypot(dx, dy);
+    if (distance < 18) return;
+    survivor.angle = Math.atan2(dy, dx);
+    const step = Math.min(distance - 12, survivor.speed * delta);
+    this.move_survivor_toward(survivor, dx / distance * step, dy / distance * step);
   }
 
   update_survivor_combat(survivor, enemy, delta) {
@@ -2123,7 +2286,7 @@ class Game {
       .map((item) => item.name)
       .slice(0, 5);
     dom.survivor_name.textContent = survivor.name;
-    dom.survivor_dialogue.textContent = survivor.recruited ? `we are moving together. i have your back.` : survivor.line;
+    dom.survivor_dialogue.textContent = survivor.recruited ? `we are moving together. i am ${group_orders[survivor.order]?.hud ?? "following"} your order.` : survivor.line;
     dom.survivor_status.textContent = `${Math.ceil(survivor.health)} health · ${Math.ceil(survivor.hunger)} hunger · ${survivor.kills} infected killed`;
     dom.survivor_loadout.innerHTML = `<div><span>weapon</span><strong>${safe(weapon?.name ?? "bare hands")}</strong></div><div><span>supplies</span><strong>${safe(supplies.join(", ") || "none")}</strong></div>`;
     dom.invite_survivor.hidden = survivor.recruited;
@@ -2140,6 +2303,8 @@ class Game {
       if (index >= 0) residents.splice(index, 1);
     }
     survivor.recruited = true;
+    survivor.order = "follow";
+    survivor.order_target_id = null;
     this.companions.push(survivor);
     this.place_companions();
     this.toast(`${survivor.name} joined your group`);
@@ -2149,6 +2314,7 @@ class Game {
   }
 
   enter(building) {
+    this.reset_transition_orders();
     this.inside = { building, floor: 0 };
     const layout = this.layout();
     this.player.x = layout.entry.x;
@@ -2163,6 +2329,7 @@ class Game {
 
   exit() {
     const building = this.inside.building;
+    this.reset_transition_orders();
     this.inside = null;
     const direction = {
       north: { x: 0, y: -1 },
@@ -2184,6 +2351,7 @@ class Game {
     const building = this.inside.building;
     const floor = this.inside.floor + direction;
     if (floor < -building.basements || floor >= building.floors) return;
+    this.reset_transition_orders();
     this.inside.floor = floor;
     const layout = this.layout();
     const arrival = direction > 0 ? layout.down_arrival : layout.up_arrival;
@@ -2196,14 +2364,27 @@ class Game {
     this.update_hud();
   }
 
-  open_container(container) {
-    this.active_container = container.id;
+  reset_transition_orders() {
+    for (const survivor of this.companions) {
+      if (survivor.order === "loot" || survivor.order === "hold") survivor.order = "follow";
+      survivor.order_target_id = null;
+      survivor.stuck_time = 0;
+    }
+  }
+
+  container_inventory(container) {
     if (!this.container_items.has(container.id)) {
       const random = rng(text_hash(`${SEED}:${container.id}:loot`));
       const table = loot_tables[container.table] ?? loot_tables.storage;
       const count = 1 + Math.floor(random() * 3);
       this.container_items.set(container.id, Array.from({ length: count }, (_, index) => make_item(table[Math.floor(random() * table.length)], `loot:${container.id}:${index}`)));
     }
+    return this.container_items.get(container.id);
+  }
+
+  open_container(container) {
+    this.active_container = container.id;
+    this.container_inventory(container);
     dom.container_name.textContent = container.kind;
     this.render_container();
     dom.container_overlay.hidden = false;
@@ -2235,6 +2416,16 @@ class Game {
     this.sound.tone(440, .08, .025, "sine", 150);
     this.close_panels();
     this.update_hud();
+  }
+
+  survivor_loot_container(survivor, container) {
+    const items = this.container_inventory(container);
+    const count = items.length;
+    while (items.length) survivor.items.push(items.shift());
+    this.looted.add(container.id);
+    survivor.order_target_id = null;
+    this.stats.found += count;
+    this.toast(`${survivor.name} looted ${container.kind} · ${count} item${count === 1 ? "" : "s"}`);
   }
 
   die() {
@@ -2272,7 +2463,10 @@ class Game {
     const food = this.inventory.items.find((item) => item.tags.includes("food") && !item.tags.includes("inedible"));
     dom.quick_food.textContent = food?.name ?? "no food";
     dom.ammo_value.textContent = weapon?.ammo_type ? `${this.inventory.ammo(weapon.ammo_type)} rounds` : "melee";
-    dom.group_status.textContent = this.companions.length ? `${this.companions.length} companion${this.companions.length === 1 ? "" : "s"}` : "travelling alone";
+    const living_companions = this.companions.filter((survivor) => !survivor.dead);
+    const active_orders = new Set(living_companions.map((survivor) => survivor.order));
+    const order_status = active_orders.size === 1 ? group_orders[[...active_orders][0]]?.hud : "mixed orders";
+    dom.group_status.textContent = living_companions.length ? `${living_companions.length} companion${living_companions.length === 1 ? "" : "s"} · ${order_status}` : "travelling alone";
     const north = Math.round(-this.player.y * .16);
     const east = Math.round(this.player.x * .16);
     dom.coordinates.textContent = `${Math.abs(north)}m ${north >= 0 ? "n" : "s"} · ${Math.abs(east)}m ${east >= 0 ? "e" : "w"}`;
@@ -2305,6 +2499,7 @@ class Game {
     this.draw_enemies(context);
     this.draw_effects(context);
     this.draw_player(context);
+    this.draw_command(context);
     context.restore();
     this.draw_light(context);
     this.draw_crosshair(context);
@@ -2679,6 +2874,19 @@ class Game {
     context.restore();
   }
 
+  draw_command(context) {
+    if (this.command_time <= 0 || !this.command_text) return;
+    const alpha = clamp(this.command_time * 1.4, 0, 1);
+    context.font = "bold 12px Courier New, monospace";
+    context.textAlign = "center";
+    context.textBaseline = "bottom";
+    context.fillStyle = `rgba(8,10,9,${alpha * .82})`;
+    const width = this.command_text.length * 7.2 + 20;
+    context.fillRect(this.player.x - width * .5, this.player.y - 66, width, 24);
+    context.fillStyle = `rgba(207,222,147,${alpha})`;
+    context.fillText(this.command_text, this.player.x, this.player.y - 49);
+  }
+
   draw_light(context) {
     if (this.inside) {
       context.fillStyle = this.inventory.items.some((item) => item.tags.includes("light")) ? "rgba(2,4,3,.08)" : "rgba(2,4,3,.18)";
@@ -2794,4 +3002,4 @@ class Game {
 
 const game = new Game();
 globalThis.city_of_nothing = game;
-globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, interior_template_catalog, interior_template_families, exterior_roof_patterns, infected_combat: { melee_reach: INFECTED_MELEE_REACH, attack_time: INFECTED_ATTACK_TIME, player_radius: PLAYER_RADIUS }, survivor_ai: { radius: SURVIVOR_RADIUS, notice_range: SURVIVOR_NOTICE_RANGE, follow_distance: SURVIVOR_FOLLOW_DISTANCE, melee_reach: SURVIVOR_MELEE_REACH, names: survivor_names }, city_geometry: { cell: CELL, road: ROAD } };
+globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, group_orders, interior_template_catalog, interior_template_families, exterior_roof_patterns, infected_combat: { melee_reach: INFECTED_MELEE_REACH, attack_time: INFECTED_ATTACK_TIME, player_radius: PLAYER_RADIUS }, survivor_ai: { radius: SURVIVOR_RADIUS, notice_range: SURVIVOR_NOTICE_RANGE, follow_distance: SURVIVOR_FOLLOW_DISTANCE, melee_reach: SURVIVOR_MELEE_REACH, shout_range: SURVIVOR_SHOUT_RANGE, attack_range: SURVIVOR_ATTACK_RANGE, guard_range: SURVIVOR_GUARD_RANGE, loot_range: SURVIVOR_LOOT_RANGE, names: survivor_names }, city_geometry: { cell: CELL, road: ROAD } };

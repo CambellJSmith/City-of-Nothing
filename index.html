@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0a0d0b">
   <meta name="description" content="City of Nothing — a perfectly top-down open-city zombie survival game.">
   <title>City of Nothing</title>
-  <link rel="stylesheet" href="styles.css?v=20260724.4">
+  <link rel="stylesheet" href="styles.css?v=20260724.5">
 </head>
 <body>
   <main id="game_shell">
@@ -43,6 +43,7 @@
     <section id="quick_bar" class="hud_panel">
       <button data-quick="weapon" type="button"><kbd>1</kbd><span id="quick_weapon">baseball bat</span></button>
       <button data-quick="food" type="button"><kbd>2</kbd><span id="quick_food">apple</span></button>
+      <button data-quick="orders" type="button"><kbd>q</kbd><span>shout orders</span></button>
       <button data-quick="inventory" type="button"><kbd>i</kbd><span>inventory</span></button>
       <button data-quick="crafting" type="button"><kbd>c</kbd><span>crafting</span></button>
     </section>
@@ -109,6 +110,21 @@
       <button id="invite_survivor" class="primary wide" type="button">invite to join your group</button>
     </section>
 
+    <section id="orders_overlay" class="overlay compact" hidden>
+      <header>
+        <div><span class="eyebrow">voice commands</span><h2>shout group order</h2></div>
+        <button data-close type="button" aria-label="Close">×</button>
+      </header>
+      <div class="group_orders">
+        <p id="orders_summary">no teammates close enough to hear</p>
+        <button id="order_attack" type="button"><strong>attack everything you can</strong><span>hunt infected throughout the surrounding area</span></button>
+        <button id="order_follow" type="button"><strong>stay with me</strong><span>keep formation and fight threats close to the group</span></button>
+        <button id="order_loot" type="button"><strong>loot all nearby containers</strong><span>divide up nearby containers and carry everything found</span></button>
+        <button id="order_hold" type="button"><strong>hold this position</strong><span>hold ground and defend the immediate area</span></button>
+        <small>shouting can attract infected. only nearby teammates will hear the order.</small>
+      </div>
+    </section>
+
     <section id="start_screen">
       <div class="start_copy">
         <span class="eyebrow">a city that remembers</span>
@@ -131,6 +147,7 @@
           <div><kbd>w a s d</kbd><span>move</span></div><div><kbd>shift</kbd><span>sprint</span></div>
           <div><kbd>mouse</kbd><span>aim</span></div><div><kbd>left click</kbd><span>attack</span></div>
           <div><kbd>e</kbd><span>interact / talk</span></div><div><kbd>i / c</kbd><span>inventory / craft</span></div>
+          <div><kbd>q</kbd><span>shout group orders</span></div>
           <div><kbd>1</kbd><span>best weapon</span></div><div><kbd>2</kbd><span>eat food</span></div>
         </div>
         <p>walk to marked doors to enter buildings. stairs connect basements and upper floors. permanent tags such as <strong>inedible</strong> and <strong>poisoned</strong> always survive crafting.</p>
@@ -149,8 +166,9 @@
       <div id="move_stick"><i></i></div>
       <button id="touch_use" type="button">use</button>
       <button id="touch_attack" type="button">attack</button>
+      <button id="touch_orders" type="button">orders</button>
     </div>
   </main>
-  <script src="game.js?v=20260724.4"></script>
+  <script src="game.js?v=20260724.5"></script>
 </body>
 </html>
