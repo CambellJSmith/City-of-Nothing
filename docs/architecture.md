@@ -29,6 +29,7 @@ The top of `game.js` contains the data-driven content:
 - `districts` defines display names, rendering colors, and infected threat multipliers.
 - `road_names` supplies deterministic street names.
 - `survivor_names` and `survivor_lines` provide deterministic human identities and conversation text.
+- `group_orders` defines the player-facing shout, HUD state, and description for each tactical order.
 - `building_names` supplies names for each building type.
 - `item_catalog` defines category, equipment slot, ammunition type, numeric statistics, tags, and description.
 - `loot_tables` maps a loot context to weighted item-name entries. Repeated names can be used to increase an item's probability.
@@ -43,7 +44,7 @@ The update phase performs these operations:
 
 1. Advance play time and world time.
 2. Update movement, sprinting, stamina, collision, and facing.
-3. Generate or retrieve nearby human survivors, update their needs, movement, equipment choice, and combat.
+3. Generate or retrieve nearby human survivors, update their needs, tactical orders, movement, equipment choice, looting, and combat.
 4. Generate or retrieve nearby infected and update pursuit against the nearest living human.
 5. Age transient shot and melee effects.
 6. Drain player hunger and apply starvation damage.
@@ -51,7 +52,7 @@ The update phase performs these operations:
 8. Smooth the camera toward the player.
 9. Continue held-mouse attacks, refresh the HUD when needed, and request a rate-limited save.
 
-Panels pause simulation. Rendering continues while paused so the game remains visible behind inventory, crafting, loot, survivor conversations, guide, and death UI.
+Panels pause simulation. Rendering continues while paused so the game remains visible behind inventory, crafting, loot, survivor conversations, group orders, guide, and death UI.
 
 ## deterministic world generation
 
@@ -118,7 +119,7 @@ The renderer only visits blocks intersecting the camera bounds. Active outdoor i
 
 Player movement is resolved one axis at a time. Outdoors, circles are checked against nearby rectangular buildings and the city boundary. Indoors, the player is checked against the interior boundary and generated wall rectangles. Every interior template connects its rooms through protected doorways, galleries, cross-halls, or spines, while entry, exit, and stair clearances are kept free of walls, furniture, and infected spawn points. A blocked position from an older save is relocated to a safe transition point when the save loads.
 
-Infected and survivors use similar circle-versus-rectangle checks. When blocked, a roaming entity changes its wander direction rather than running pathfinding. Recruited survivors follow distinct formation targets and are safely repositioned around the player during entrances, exits, floor changes, save restoration, or extreme separation.
+Infected and survivors use similar circle-versus-rectangle checks. When blocked, a roaming entity changes its wander direction rather than running pathfinding. Recruited survivors follow distinct formation targets and are safely repositioned around the player during entrances, exits, floor changes, save restoration, or extreme separation. Looting companions move toward reserved container positions and use the same stalled-movement recovery as formation travel.
 
 This keeps the simulation inexpensive, but it also means autonomous entities do not calculate full routes around complex obstacles.
 
@@ -132,10 +133,27 @@ The equipped weapon selects the attack path:
 - Weapon noise alerts active infected within a derived radius.
 - Armor reduces incoming damage, subject to a reduction cap and minimum final damage.
 - Survivors choose the highest-attack currently usable weapon, consume matching ammunition, and use safe food or medicine at need thresholds.
+- Recruited survivors choose targets through their individual order: broad hunting, close group defence, local self-defence while looting, or defence around a held position.
 - Infected select the nearest living player or survivor, stop at melee reach, and damage that target.
 - A survivor's killing blow records a group kill and transfers any deterministic drop into that survivor's inventory.
 
 Combat effects such as blood marks, swing arcs, shot lines, camera shake, and synthesized tones are presentation state. They are not persisted.
+
+## companion order model
+
+Group commands are issued through `issue_group_order()`. The command first filters living companions by squared distance against `SURVIVOR_SHOUT_RANGE`; every recipient stores its own order, anchor coordinates, and optional container target. Distant companions are unchanged.
+
+The survivor update loop applies priorities in this order:
+
+1. Needs, medical use, food use, and starvation.
+2. Order-specific infected target selection.
+3. Combat when an eligible target exists.
+4. Looting or holding when those orders are active.
+5. Formation following or independent roaming.
+
+Container targets are claimed by ID. A looter excludes IDs already reserved by another looting companion, generates contents through the shared `container_inventory()` path, transfers every item into its personal inventory, and marks the container emptied. This preserves the same deterministic item IDs and save deltas as direct player looting.
+
+Shouting creates a short-lived presentation label, plays a synthesized voice-like cue, and calls the existing noise alert path. The label and sound are transient. Survivor order fields are persistent. Loot and hold tasks are reset to following during a building or floor transition because their positions are local to the previous scene.
 
 ## rendering pipeline
 
@@ -177,7 +195,7 @@ The save key is `city_of_nothing_save_v1`, and the serialized object declares `v
 | `looted` | IDs of fully emptied containers |
 | `killed` | Defeated infected IDs; only the most recent 4,000 are serialized |
 | `lost_survivors` | Survivor IDs that must not regenerate after death |
-| `companions` | Recruited survivor state, including needs, inventory, loadout, and kills |
+| `companions` | Recruited survivor state, including needs, inventory, loadout, kills, tactical order, anchor, and reserved container ID |
 | `outdoor_survivors` | Up to 80 recently encountered outdoor-zone survivor populations |
 | `container_items` | Map entries containing generated-but-not-yet-taken loot |
 
@@ -194,6 +212,6 @@ globalThis.city_of_nothing
 globalThis.city_of_nothing_test
 ```
 
-`city_of_nothing` is the live `Game` instance. `city_of_nothing_test` contains item helpers, content catalogs, interior-template data, combat constants, survivor-AI constants, and city geometry for console inspection or lightweight automated tests.
+`city_of_nothing` is the live `Game` instance. `city_of_nothing_test` contains item helpers, content catalogs, group-order definitions, interior-template data, combat constants, survivor-AI constants, and city geometry for console inspection or lightweight automated tests.
 
 These globals are developer interfaces, not isolated security boundaries. Do not place secrets in the game or trust browser state as authoritative.
