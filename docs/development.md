@@ -89,9 +89,11 @@ Catalog names are used as component history and loot-table keys. Renaming one ca
 Update all content and behavior that switches on building type:
 
 - `building_names`
+- `interior_room_kinds`
+- `interior_template_families`
 - `World.building_types()`
 - Floor and basement rules in `World.make_buildings()`
-- Interior dimensions and wall layout in `World.interior()`
+- Interior family compatibility, dimensions, room roles, and wall layout
 - Container selection in `World.container_kind()`
 - Loot context in `World.loot_table()`
 - Exterior color in `Game.draw_building()`
@@ -170,7 +172,7 @@ Run the dependency-free automated suite before merging:
 node tests.mjs
 ```
 
-The suite checks startup, persistence, crafting, generated content, all building types, interior connectivity, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
+The suite checks startup, persistence, crafting, generated content, all building types, every base interior template at minimum dimensions, sampled geometry and family variety, deterministic regeneration, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
 
 1. Load the start screen with no console errors.
 2. Begin a new run and move with both WASD and arrow keys.

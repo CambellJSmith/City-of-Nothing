@@ -37,6 +37,84 @@ const building_names = {
   diner: ["last light diner", "mabel's kitchen", "grey spoon", "night shift café"],
 };
 
+const interior_room_kinds = {
+  house: ["living room", "kitchen", "bedroom", "bathroom", "study", "utility room"],
+  apartments: ["apartment", "kitchen", "bedroom", "lounge", "laundry", "storage room"],
+  shop: ["shop floor", "stock room", "office", "staff room", "service room", "storage room"],
+  office: ["open office", "private office", "meeting room", "break room", "records room", "reception"],
+  warehouse: ["warehouse floor", "loading bay", "stock room", "dispatch office", "workshop", "utility room"],
+  factory: ["factory floor", "assembly room", "machine room", "foreman office", "parts store", "utility room"],
+  hospital: ["ward", "treatment room", "surgery", "nurses station", "pharmacy", "waiting room"],
+  police: ["front desk", "office", "interview room", "evidence room", "locker room", "holding room"],
+  civic: ["public office", "records room", "meeting room", "service counter", "archive", "staff room"],
+  school: ["classroom", "staff room", "library", "cafeteria", "science room", "storage room"],
+  diner: ["dining room", "kitchen", "pantry", "staff room", "office", "storage room"],
+};
+
+const interior_template_families = {
+  house: ["front_suites", "horizontal_gallery", "cross_hall", "vertical_spine"],
+  apartments: ["vertical_spine", "horizontal_gallery", "cross_hall", "front_suites"],
+  shop: ["front_suites", "horizontal_gallery", "cross_hall", "vertical_spine"],
+  office: ["vertical_spine", "horizontal_gallery", "cross_hall", "front_suites"],
+  warehouse: ["industrial_bays", "horizontal_gallery", "cross_hall"],
+  factory: ["industrial_bays", "horizontal_gallery", "cross_hall"],
+  hospital: ["vertical_spine", "horizontal_gallery", "cross_hall"],
+  police: ["vertical_spine", "horizontal_gallery", "cross_hall", "front_suites"],
+  civic: ["vertical_spine", "horizontal_gallery", "cross_hall"],
+  school: ["vertical_spine", "horizontal_gallery", "cross_hall"],
+  diner: ["front_suites", "horizontal_gallery", "cross_hall"],
+};
+
+function make_interior_template_catalog() {
+  const catalog = { vertical_spine: [], horizontal_gallery: [], cross_hall: [], front_suites: [], industrial_bays: [] };
+  for (const bands of [2, 3]) {
+    for (const hall_width of [124, 148]) {
+      for (const hall_offset of [-.12, -.06, 0, .06, .12]) {
+        catalog.vertical_spine.push({ id: `vertical_spine_${bands}_${hall_width}_${Math.round((hall_offset + .12) * 100)}`, family: "vertical_spine", bands, hall_width, hall_offset });
+      }
+    }
+  }
+  for (const top_columns of [2, 3, 4]) {
+    for (const bottom_columns of [2, 3, 4]) {
+      for (const gallery_y of [.4, .5, .6]) {
+        for (const gallery_height of [124, 148]) {
+          for (let entry_slot = 0; entry_slot < bottom_columns; entry_slot += 1) {
+            catalog.horizontal_gallery.push({ id: `horizontal_gallery_${top_columns}_${bottom_columns}_${Math.round(gallery_y * 100)}_${gallery_height}_${entry_slot}`, family: "horizontal_gallery", top_columns, bottom_columns, gallery_y, gallery_height, entry_slot });
+          }
+        }
+      }
+    }
+  }
+  for (const hall_offset of [-.12, -.06, 0, .06, .12]) {
+    for (const cross_y of [.42, .5, .58]) {
+      for (const hall_width of [124, 148]) {
+        for (const cross_height of [124, 148]) {
+          catalog.cross_hall.push({ id: `cross_hall_${Math.round((hall_offset + .12) * 100)}_${Math.round(cross_y * 100)}_${hall_width}_${cross_height}`, family: "cross_hall", hall_offset, cross_y, hall_width, cross_height });
+        }
+      }
+    }
+  }
+  for (const rear_columns of [2, 3, 4]) {
+    for (const rear_y of [.34, .42, .5, .58]) {
+      for (const side_mode of ["none", "left", "right", "both"]) {
+        catalog.front_suites.push({ id: `front_suites_${rear_columns}_${Math.round(rear_y * 100)}_${side_mode}`, family: "front_suites", rear_columns, rear_y, side_mode });
+      }
+    }
+  }
+  for (const office_columns of [2, 3, 4]) {
+    for (const service_y of [.32, .4, .48]) {
+      for (const bay_count of [2, 3, 4]) {
+        for (const pod_side of ["none", "left", "right"]) {
+          catalog.industrial_bays.push({ id: `industrial_bays_${office_columns}_${Math.round(service_y * 100)}_${bay_count}_${pod_side}`, family: "industrial_bays", office_columns, service_y, bay_count, pod_side });
+        }
+      }
+    }
+  }
+  return catalog;
+}
+
+const interior_template_catalog = make_interior_template_catalog();
+
 const item_catalog = {
   "apple": { category: "food", stats: { food: 14, heal: 2, weight: 0.2, durability: 1 }, tags: ["food", "fresh"], description: "Bruised, but still recognisably an apple." },
   "canned soup": { category: "food", stats: { food: 24, heal: 4, weight: 0.6, durability: 1 }, tags: ["food", "sealed"], description: "A dented tin with an intact seal." },
@@ -490,12 +568,17 @@ class World {
     const key = `${building.id}:${floor}`;
     if (this.interiors.has(key)) return this.interiors.get(key);
     const random = rng(building.seed + floor * 8191);
-    const width = ["warehouse", "factory"].includes(building.type) ? 1120 : 920;
-    const height = ["hospital", "school", "civic"].includes(building.type) ? 780 : 680;
+    const template = this.interior_template(building.type, random);
+    const dimensions = this.interior_dimensions(building.type, random);
+    const width = dimensions.width;
+    const height = dimensions.height;
     const layout = {
       key,
       width,
       height,
+      template_id: template.id,
+      template_family: template.family,
+      room_kind_offset: Math.floor(random() * interior_room_kinds[building.type].length),
       walls: [],
       doors: [],
       passages: [],
@@ -508,13 +591,43 @@ class World {
       exit: floor === 0 ? { x: width * .5, y: height - 38 } : null,
       entry: floor === 0 ? { x: width * .5, y: height - 90 } : null,
     };
-    this.make_interior_floor_plan(layout, building.type, random);
+    this.make_interior_floor_plan(layout, building.type, template, random);
     for (const point of [layout.entry, layout.exit, layout.up, layout.down]) if (point) layout.clearances.push({ x: point.x, y: point.y, radius: point === layout.exit ? 50 : 76 });
     for (const door of layout.doors) layout.clearances.push({ x: door.x, y: door.y, radius: Math.max(60, door.width * .5) });
     this.populate_interior(layout, building, floor, random);
     this.interiors.set(key, layout);
     if (this.interiors.size > 120) this.interiors.delete(this.interiors.keys().next().value);
     return layout;
+  }
+
+  interior_template(type, random) {
+    const families = interior_template_families[type] ?? interior_template_families.office;
+    const family = families[Math.floor(random() * families.length)];
+    const templates = interior_template_catalog[family];
+    return templates[Math.floor(random() * templates.length)];
+  }
+
+  interior_dimensions(type, random) {
+    const industrial = ["warehouse", "factory"].includes(type);
+    const institutional = ["hospital", "school", "civic"].includes(type);
+    const width_options = industrial ? [1040, 1120, 1200] : institutional ? [920, 1000, 1080] : [840, 920, 1000];
+    const height_options = institutional ? [720, 780, 840] : industrial ? [680, 740, 800] : [640, 680, 740];
+    return {
+      width: width_options[Math.floor(random() * width_options.length)],
+      height: height_options[Math.floor(random() * height_options.length)],
+    };
+  }
+
+  align_interior_entry(layout, x) {
+    if (layout.entry) layout.entry.x = x;
+    if (layout.exit) layout.exit.x = x;
+  }
+
+  add_interior_room(layout, type, x, y, w, h, door_x, door_y) {
+    if (w < 96 || h < 96) return;
+    const kinds = interior_room_kinds[type] ?? interior_room_kinds.office;
+    const kind = kinds[(layout.rooms.length + layout.room_kind_offset) % kinds.length];
+    layout.rooms.push({ x, y, w, h, door_x, door_y, kind });
   }
 
   add_partition(layout, orientation, position, start, end, openings, opening_width = 128) {
@@ -539,70 +652,224 @@ class World {
     }
   }
 
-  make_interior_floor_plan(layout, type, random) {
-    if (["warehouse", "factory"].includes(type)) return this.make_industrial_floor_plan(layout);
-    if (["house", "shop", "diner"].includes(type)) return this.make_front_room_floor_plan(layout, type);
-    this.make_corridor_floor_plan(layout, type, random);
+  make_interior_floor_plan(layout, type, template, random) {
+    if (template.family === "vertical_spine") return this.make_vertical_spine_floor_plan(layout, type, template, random);
+    if (template.family === "horizontal_gallery") return this.make_horizontal_gallery_floor_plan(layout, type, template, random);
+    if (template.family === "cross_hall") return this.make_cross_hall_floor_plan(layout, type, template, random);
+    if (template.family === "front_suites") return this.make_front_suites_floor_plan(layout, type, template, random);
+    this.make_industrial_bays_floor_plan(layout, type, template, random);
   }
 
-  make_corridor_floor_plan(layout, type, random) {
-    const top = 28;
-    const bottom = layout.height - 28;
-    const hall_left = layout.width * .5 - 62;
-    const hall_right = layout.width * .5 + 62;
-    const bands = ["hospital", "school", "civic", "apartments"].includes(type) ? 3 : 2;
-    const band_height = (bottom - top) / bands;
+  make_vertical_spine_floor_plan(layout, type, template, random) {
+    const edge = 28;
+    const bottom = layout.height - edge;
+    const hall_center = clamp(layout.width * (.5 + template.hall_offset), 300, layout.width - 300);
+    const hall_left = hall_center - template.hall_width * .5;
+    const hall_right = hall_center + template.hall_width * .5;
+    const band_height = (bottom - edge) / template.bands;
     const left_doors = [];
     const right_doors = [];
-    for (let index = 0; index < bands; index += 1) {
-      const band_top = top + band_height * index;
-      const band_bottom = top + band_height * (index + 1);
+    this.align_interior_entry(layout, hall_center);
+    for (let index = 0; index < template.bands; index += 1) {
+      const band_top = edge + band_height * index;
+      const band_bottom = edge + band_height * (index + 1);
       const variation = Math.min(28, band_height * .12);
       const left_door_y = (band_top + band_bottom) * .5 + (random() - .5) * variation;
       const right_door_y = (band_top + band_bottom) * .5 + (random() - .5) * variation;
       left_doors.push(left_door_y);
       right_doors.push(right_door_y);
-      layout.rooms.push({ x: top, y: band_top, w: hall_left - top, h: band_height, door_x: hall_left, door_y: left_door_y, kind: `${type} room` });
-      layout.rooms.push({ x: hall_right + 12, y: band_top, w: layout.width - top - hall_right - 12, h: band_height, door_x: hall_right, door_y: right_door_y, kind: `${type} room` });
+      const room_y = band_top + (index > 0 ? 12 : 0);
+      this.add_interior_room(layout, type, edge, room_y, hall_left - edge, band_bottom - room_y, hall_left, left_door_y);
+      this.add_interior_room(layout, type, hall_right + 12, room_y, layout.width - edge - hall_right - 12, band_bottom - room_y, hall_right, right_door_y);
       if (index === 0) continue;
       const divider_y = band_top;
-      layout.walls.push({ x: top, y: divider_y, w: hall_left - top, h: 12 });
-      layout.walls.push({ x: hall_right, y: divider_y, w: layout.width - top - hall_right, h: 12 });
+      layout.walls.push({ x: edge, y: divider_y, w: hall_left - edge, h: 12 });
+      layout.walls.push({ x: hall_right, y: divider_y, w: layout.width - edge - hall_right, h: 12 });
     }
-    this.add_partition(layout, "vertical", hall_left, top, bottom, left_doors);
-    this.add_partition(layout, "vertical", hall_right, top, bottom, right_doors);
+    this.add_partition(layout, "vertical", hall_left, edge, bottom, left_doors, template.hall_width);
+    this.add_partition(layout, "vertical", hall_right, edge, bottom, right_doors, template.hall_width);
     if (layout.entry) layout.passages.push({ x: hall_left + 12, y: 54, w: hall_right - hall_left - 12, h: layout.entry.y - 54, kind: "entry" });
   }
 
-  make_front_room_floor_plan(layout, type) {
+  make_horizontal_gallery_floor_plan(layout, type, template, random) {
     const edge = 28;
-    const center = layout.width * .5;
-    const back_wall_y = layout.height * .4;
-    const divider_end = back_wall_y - 96;
-    this.add_partition(layout, "horizontal", back_wall_y, edge, layout.width - edge, [center], 144);
-    this.add_partition(layout, "vertical", center, edge, divider_end, []);
-    if (layout.entry) layout.passages.push({ x: center - 72, y: divider_end + 32, w: 144, h: layout.entry.y - divider_end - 32, kind: "entry" });
-    layout.rooms.push({ x: edge, y: edge, w: center - edge, h: back_wall_y - edge, door_x: center, door_y: back_wall_y, kind: type === "house" ? "bedroom" : "stock room" });
-    layout.rooms.push({ x: center + 12, y: edge, w: layout.width - center - edge - 12, h: back_wall_y - edge, door_x: center, door_y: back_wall_y, kind: type === "diner" ? "kitchen" : "back room" });
-    layout.rooms.push({ x: edge, y: back_wall_y + 12, w: layout.width - edge * 2, h: layout.height - back_wall_y - edge - 12, door_x: layout.width * .5, door_y: layout.height - 90, kind: type === "house" ? "living room" : type === "diner" ? "dining room" : "shop floor" });
+    const right = layout.width - edge;
+    const bottom = layout.height - edge;
+    const gallery_center = layout.height * template.gallery_y;
+    const gallery_top = gallery_center - template.gallery_height * .5;
+    const gallery_bottom = gallery_center + template.gallery_height * .5;
+    const top_width = (right - edge) / template.top_columns;
+    const bottom_width = (right - edge) / template.bottom_columns;
+    const entry_slot = template.entry_slot;
+    const entry_x = edge + bottom_width * (entry_slot + .5);
+    const top_doors = [];
+    const bottom_doors = [];
+    this.align_interior_entry(layout, entry_x);
+    for (let index = 0; index < template.top_columns; index += 1) {
+      const room_left = edge + top_width * index;
+      const room_x = room_left + (index > 0 ? 12 : 0);
+      const door_x = room_left + top_width * (.42 + random() * .16);
+      top_doors.push(door_x);
+      this.add_interior_room(layout, type, room_x, edge, room_left + top_width - room_x, gallery_top - edge, door_x, gallery_top);
+      if (index > 0) layout.walls.push({ x: room_left, y: edge, w: 12, h: gallery_top - edge });
+    }
+    for (let index = 0; index < template.bottom_columns; index += 1) {
+      const room_left = edge + bottom_width * index;
+      const room_x = room_left + (index > 0 ? 12 : 0);
+      const door_x = index === entry_slot ? entry_x : room_left + bottom_width * (.42 + random() * .16);
+      bottom_doors.push(door_x);
+      this.add_interior_room(layout, type, room_x, gallery_bottom + 12, room_left + bottom_width - room_x, bottom - gallery_bottom - 12, door_x, gallery_bottom);
+      if (index > 0) layout.walls.push({ x: room_left, y: gallery_bottom, w: 12, h: bottom - gallery_bottom });
+    }
+    this.add_partition(layout, "horizontal", gallery_top, edge, right, top_doors, 124);
+    this.add_partition(layout, "horizontal", gallery_bottom, edge, right, bottom_doors, 124);
+    if (layout.entry) layout.passages.push({ x: entry_x - 62, y: gallery_bottom - 72, w: 124, h: layout.entry.y - gallery_bottom + 72, kind: "entry" });
   }
 
-  make_industrial_floor_plan(layout) {
+  make_cross_hall_floor_plan(layout, type, template, random) {
     const edge = 28;
-    const office_left = layout.width - 310;
-    const office_bottom = 248;
-    this.add_partition(layout, "vertical", office_left, edge, office_bottom, [148], 120);
-    this.add_partition(layout, "horizontal", office_bottom, office_left, layout.width - edge, [layout.width - 148], 120);
-    if (layout.entry) layout.passages.push({ x: layout.width * .5 - 72, y: 54, w: 144, h: layout.entry.y - 54, kind: "entry" });
-    layout.rooms.push({ x: edge, y: edge, w: office_left - edge, h: office_bottom - edge, door_x: office_left, door_y: 148, kind: "workshop" });
-    layout.rooms.push({ x: office_left + 12, y: edge, w: layout.width - office_left - edge - 12, h: office_bottom - edge, door_x: layout.width - 148, door_y: office_bottom, kind: "office" });
-    layout.rooms.push({ x: edge, y: office_bottom + 12, w: layout.width - edge * 2, h: layout.height - office_bottom - edge - 12, door_x: layout.width * .5, door_y: layout.height - 90, kind: "warehouse floor" });
+    const right = layout.width - edge;
+    const bottom = layout.height - edge;
+    const hall_center = clamp(layout.width * (.5 + template.hall_offset), 300, layout.width - 300);
+    const hall_left = hall_center - template.hall_width * .5;
+    const hall_right = hall_center + template.hall_width * .5;
+    const cross_center = layout.height * template.cross_y;
+    const cross_top = cross_center - template.cross_height * .5;
+    const cross_bottom = cross_center + template.cross_height * .5;
+    const upper_door_y = edge + (cross_top - edge) * (.42 + random() * .16);
+    const lower_door_y = cross_bottom + (bottom - cross_bottom) * (.42 + random() * .16);
+    const left_door_x = edge + (hall_left - edge) * (.42 + random() * .16);
+    const right_door_x = hall_right + (right - hall_right) * (.42 + random() * .16);
+    this.align_interior_entry(layout, hall_center);
+    this.add_partition(layout, "vertical", hall_left, edge, cross_top, [upper_door_y], 124);
+    this.add_partition(layout, "vertical", hall_left, cross_bottom, bottom, [lower_door_y], 124);
+    this.add_partition(layout, "vertical", hall_right, edge, cross_top, [upper_door_y], 124);
+    this.add_partition(layout, "vertical", hall_right, cross_bottom, bottom, [lower_door_y], 124);
+    this.add_partition(layout, "horizontal", cross_top, edge, hall_left, [left_door_x], 124);
+    this.add_partition(layout, "horizontal", cross_top, hall_right, right, [right_door_x], 124);
+    this.add_partition(layout, "horizontal", cross_bottom, edge, hall_left, [left_door_x], 124);
+    this.add_partition(layout, "horizontal", cross_bottom, hall_right, right, [right_door_x], 124);
+    this.add_interior_room(layout, type, edge, edge, hall_left - edge, cross_top - edge, hall_left, upper_door_y);
+    this.add_interior_room(layout, type, hall_right + 12, edge, right - hall_right - 12, cross_top - edge, hall_right, upper_door_y);
+    this.add_interior_room(layout, type, edge, cross_bottom + 12, hall_left - edge, bottom - cross_bottom - 12, hall_left, lower_door_y);
+    this.add_interior_room(layout, type, hall_right + 12, cross_bottom + 12, right - hall_right - 12, bottom - cross_bottom - 12, hall_right, lower_door_y);
+    if (layout.entry) layout.passages.push({ x: hall_left + 12, y: 54, w: hall_right - hall_left - 12, h: layout.entry.y - 54, kind: "entry" });
+  }
+
+  make_front_suites_floor_plan(layout, type, template, random) {
+    const edge = 28;
+    const right = layout.width - edge;
+    const bottom = layout.height - edge;
+    const rear_wall_y = layout.height * template.rear_y;
+    const rear_width = (right - edge) / template.rear_columns;
+    const rear_doors = [];
+    const left_wall = ["left", "both"].includes(template.side_mode) ? edge + Math.min(220, layout.width * .24) : null;
+    const right_wall = ["right", "both"].includes(template.side_mode) ? right - Math.min(220, layout.width * .24) : null;
+    const side_walls = [left_wall, right_wall].filter((wall) => wall !== null);
+    const main_left = left_wall ? left_wall + 12 : edge;
+    const main_right = right_wall ?? right;
+    for (let index = 0; index < template.rear_columns; index += 1) {
+      const room_left = edge + rear_width * index;
+      const room_x = room_left + (index > 0 ? 12 : 0);
+      let door_x = room_left + rear_width * (.42 + random() * .16);
+      if (side_walls.some((wall) => Math.abs(door_x - wall) < 100)) {
+        const options = [room_left + 78, room_left + rear_width - 78];
+        door_x = options.reduce((best, option) => Math.min(...side_walls.map((wall) => Math.abs(option - wall))) > Math.min(...side_walls.map((wall) => Math.abs(best - wall))) ? option : best, options[0]);
+      }
+      rear_doors.push(door_x);
+      this.add_interior_room(layout, type, room_x, edge, room_left + rear_width - room_x, rear_wall_y - edge, door_x, rear_wall_y);
+      if (index > 0) layout.walls.push({ x: room_left, y: edge, w: 12, h: rear_wall_y - edge });
+    }
+    const side_door_y = rear_wall_y + (bottom - rear_wall_y) * (.42 + random() * .16);
+    if (left_wall) {
+      this.add_partition(layout, "vertical", left_wall, rear_wall_y, bottom, [side_door_y], 124);
+      this.add_interior_room(layout, type, edge, rear_wall_y + 12, left_wall - edge, bottom - rear_wall_y - 12, left_wall, side_door_y);
+    }
+    if (right_wall) {
+      this.add_partition(layout, "vertical", right_wall, rear_wall_y, bottom, [side_door_y], 124);
+      this.add_interior_room(layout, type, right_wall + 12, rear_wall_y + 12, right - right_wall - 12, bottom - rear_wall_y - 12, right_wall, side_door_y);
+    }
+    const preferred_entry_x = clamp(layout.width * .5 + (random() - .5) * Math.min(120, (main_right - main_left) * .25), main_left + 72, main_right - 72);
+    const entry_blockers = Array.from({ length: template.rear_columns - 1 }, (_, index) => edge + rear_width * (index + 1));
+    entry_blockers.push(...side_walls);
+    const entry_options = [];
+    for (let index = 0; index < template.rear_columns; index += 1) {
+      for (const position of [.28, .5, .72]) entry_options.push(edge + rear_width * (index + position));
+    }
+    const sorted_entry_blockers = [...entry_blockers].sort((first, second) => first - second);
+    for (let index = 1; index < sorted_entry_blockers.length; index += 1) entry_options.push((sorted_entry_blockers[index - 1] + sorted_entry_blockers[index]) * .5);
+    const valid_entry_options = entry_options.filter((x) => x >= main_left + 72 && x <= main_right - 72 && entry_blockers.every((blocker) => Math.abs(x - blocker) >= 90));
+    const entry_x = valid_entry_options.reduce((best, x) => Math.abs(x - preferred_entry_x) < Math.abs(best - preferred_entry_x) ? x : best, valid_entry_options[0] ?? preferred_entry_x);
+    rear_doors.push(entry_x);
+    this.align_interior_entry(layout, entry_x);
+    this.add_partition(layout, "horizontal", rear_wall_y, edge, right, rear_doors, 124);
+    this.add_interior_room(layout, type, main_left, rear_wall_y + 12, main_right - main_left, bottom - rear_wall_y - 12, entry_x, rear_wall_y);
+    if (layout.entry) layout.passages.push({ x: entry_x - 62, y: rear_wall_y - 72, w: 124, h: layout.entry.y - rear_wall_y + 72, kind: "entry" });
+  }
+
+  make_industrial_bays_floor_plan(layout, type, template, random) {
+    const edge = 28;
+    const right = layout.width - edge;
+    const bottom = layout.height - edge;
+    const service_wall_y = layout.height * template.service_y;
+    const office_width = (right - edge) / template.office_columns;
+    const office_doors = [];
+    const pod_wall = template.pod_side === "left" ? edge + 220 : template.pod_side === "right" ? right - 220 : null;
+    let bay_left = template.pod_side === "left" ? pod_wall + 12 : edge;
+    let bay_right = template.pod_side === "right" ? pod_wall : right;
+    for (let index = 0; index < template.office_columns; index += 1) {
+      const room_left = edge + office_width * index;
+      const room_x = room_left + (index > 0 ? 12 : 0);
+      let door_x = room_left + office_width * (.42 + random() * .16);
+      if (pod_wall && Math.abs(door_x - pod_wall) < 110) {
+        const left_option = room_left + 78;
+        const right_option = room_left + office_width - 78;
+        door_x = Math.abs(left_option - pod_wall) > Math.abs(right_option - pod_wall) ? left_option : right_option;
+      }
+      office_doors.push(door_x);
+      this.add_interior_room(layout, type, room_x, edge, room_left + office_width - room_x, service_wall_y - edge, door_x, service_wall_y);
+      if (index > 0) layout.walls.push({ x: room_left, y: edge, w: 12, h: service_wall_y - edge });
+    }
+    const pod_door_y = service_wall_y + (bottom - service_wall_y) * (.42 + random() * .16);
+    if (template.pod_side === "left") {
+      this.add_partition(layout, "vertical", pod_wall, service_wall_y, bottom, [pod_door_y], 124);
+      this.add_interior_room(layout, type, edge, service_wall_y + 12, pod_wall - edge, bottom - service_wall_y - 12, pod_wall, pod_door_y);
+    } else if (template.pod_side === "right") {
+      this.add_partition(layout, "vertical", pod_wall, service_wall_y, bottom, [pod_door_y], 124);
+      this.add_interior_room(layout, type, pod_wall + 12, service_wall_y + 12, right - pod_wall - 12, bottom - service_wall_y - 12, pod_wall, pod_door_y);
+    }
+    const preferred_entry_x = clamp(layout.width * .5 + (random() - .5) * Math.min(150, (bay_right - bay_left) * .2), bay_left + 72, bay_right - 72);
+    const entry_blockers = Array.from({ length: template.office_columns - 1 }, (_, index) => edge + office_width * (index + 1));
+    if (pod_wall) entry_blockers.push(pod_wall);
+    const entry_options = [];
+    for (let index = 0; index < template.office_columns; index += 1) {
+      for (const position of [.28, .5, .72]) entry_options.push(edge + office_width * (index + position));
+    }
+    const valid_entry_options = entry_options.filter((x) => x >= bay_left + 72 && x <= bay_right - 72 && entry_blockers.every((blocker) => Math.abs(x - blocker) >= 100));
+    const entry_x = valid_entry_options.reduce((best, x) => Math.abs(x - preferred_entry_x) < Math.abs(best - preferred_entry_x) ? x : best, valid_entry_options[0] ?? preferred_entry_x);
+    office_doors.push(entry_x);
+    this.align_interior_entry(layout, entry_x);
+    this.add_partition(layout, "horizontal", service_wall_y, edge, right, office_doors, 124);
+    const bay_width = (bay_right - bay_left) / template.bay_count;
+    const divider_bottom = service_wall_y + (bottom - service_wall_y) * .62;
+    for (let index = 1; index < template.bay_count; index += 1) {
+      const divider_x = bay_left + bay_width * index;
+      if (office_doors.some((door_x) => Math.abs(divider_x - door_x) < 100)) continue;
+      layout.walls.push({ x: divider_x, y: service_wall_y + 12, w: 12, h: divider_bottom - service_wall_y - 12 });
+    }
+    for (let index = 0; index < template.bay_count; index += 1) {
+      const room_left = bay_left + bay_width * index;
+      const room_x = room_left + (index > 0 ? 12 : 0);
+      this.add_interior_room(layout, type, room_x, service_wall_y + 12, room_left + bay_width - room_x, bottom - service_wall_y - 12, entry_x, service_wall_y);
+    }
+    if (layout.entry) layout.passages.push({ x: entry_x - 62, y: service_wall_y - 72, w: 124, h: layout.entry.y - service_wall_y + 72, kind: "entry" });
   }
 
   populate_interior(layout, building, floor, random) {
-    const count = building.type === "warehouse" ? 8 : 5 + Math.floor(random() * 4);
+    const count = ["warehouse", "factory"].includes(building.type) ? 7 + Math.floor(random() * 5) : 5 + Math.floor(random() * 6);
+    const container_offset = Math.floor(random() * 6);
     for (let index = 0; index < count; index += 1) {
-      const kind = this.container_kind(building.type, index);
+      const kind = this.container_kind(building.type, index + container_offset);
       const width = kind === "crate" ? 48 : 38;
       const height = kind === "crate" ? 42 : 32;
       const position = this.place_interior_fixture(layout, width, height, random);
@@ -612,21 +879,34 @@ class World {
       layout.furniture.push(container);
     }
     if (["warehouse", "factory"].includes(building.type)) {
-      for (let row = 0; row < 2; row += 1) {
-        for (let column = 0; column < 4; column += 1) {
-          const rack = { x: 105 + column * 170, y: 320 + row * 150, w: 112, h: 42, kind: "rack" };
-          if (this.interior_fixture_fits(layout, rack)) layout.furniture.push(rack);
-        }
+      const rack_count = 5 + Math.floor(random() * 7);
+      for (let index = 0; index < rack_count; index += 1) {
+        const width = 92 + Math.floor(random() * 48);
+        const position = this.place_interior_fixture(layout, width, 38 + Math.floor(random() * 16), random);
+        if (position) layout.furniture.push({ ...position, kind: index % 3 === 0 ? "machine" : "rack" });
       }
     }
-    const furniture_count = ["hospital", "school", "apartments"].includes(building.type) ? 8 : 5;
+    const furniture_count = ["hospital", "school", "apartments"].includes(building.type) ? 8 + Math.floor(random() * 7) : 4 + Math.floor(random() * 8);
+    const furniture_kinds = this.interior_furniture_kinds(building.type);
     for (let index = 0; index < furniture_count; index += 1) {
       const width = 44 + random() * 40;
       const height = 24 + random() * 24;
       const position = this.place_interior_fixture(layout, width, height, random);
       if (!position) continue;
-      layout.furniture.push({ x: position.x, y: position.y, w: width, h: height, kind: building.type === "hospital" ? "bed" : building.type === "office" ? "desk" : "table" });
+      layout.furniture.push({ x: position.x, y: position.y, w: width, h: height, kind: furniture_kinds[index % furniture_kinds.length] });
     }
+  }
+
+  interior_furniture_kinds(type) {
+    if (type === "house") return ["table", "sofa", "bed", "chair", "bookcase"];
+    if (type === "apartments") return ["sofa", "bed", "table", "chair", "wardrobe"];
+    if (type === "hospital") return ["bed", "gurney", "desk", "chair", "screen"];
+    if (type === "school") return ["desk", "table", "chair", "bookcase", "cabinet"];
+    if (type === "police") return ["desk", "chair", "bench", "locker", "cabinet"];
+    if (type === "shop") return ["shelf", "counter", "display", "table", "chair"];
+    if (type === "diner") return ["table", "booth", "counter", "chair", "stove"];
+    if (["warehouse", "factory"].includes(type)) return ["rack", "machine", "workbench", "pallet", "table"];
+    return ["desk", "table", "chair", "cabinet", "bookcase"];
   }
 
   place_interior_fixture(layout, width, height, random) {
@@ -1805,4 +2085,4 @@ class Game {
 
 const game = new Game();
 globalThis.city_of_nothing = game;
-globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables };
+globalThis.city_of_nothing_test = { combine_items, make_item, districts, item_catalog, loot_tables, interior_template_catalog, interior_template_families };

@@ -59,11 +59,25 @@ The world uses a fixed numeric seed and stable hashes derived from grid coordina
 - Each block is `CELL` world units square with a road corridor through its edges.
 - District assignment uses distance from the center, coordinate regions, and deterministic noise.
 - Building types, names, dimensions, doors, floor counts, basements, and seeds are reproduced from block coordinates.
-- Interior geometry, connected room-and-hall templates, furniture, container positions, and loot contexts are reproduced from building seed and floor.
+- Interior geometry, template selection, room roles, dimensions, furniture, container positions, and loot contexts are reproduced from building seed and floor.
 - Outdoor and indoor infected IDs are derived from block, building, floor, and index.
 - Container loot is generated from the container ID.
 
 This separates immutable generated state from player-authored deltas. A save does not need to contain the city; it contains facts such as “this container was emptied” or “this infected ID was defeated.”
+
+### interior template system
+
+The interior catalog contains 371 base templates across five structural families:
+
+- vertical spines with two or three room bands, offset halls, and varied hall widths
+- horizontal galleries with different room grids, corridor positions, entry rooms, and corridor widths
+- cross-halls with independently positioned vertical and horizontal routes
+- front suites with varied rear-room counts, depths, and optional side rooms
+- industrial bays with office rows, loading-bay divisions, and optional side pods
+
+Each building type selects from a compatible family pool containing at least 240 base templates. Building seed and floor then select the template, dimensions, door offsets, room-role rotation, furniture counts, fixture types, and placement. This gives separate floors and nearby buildings visibly different geometry while remaining deterministic.
+
+Every family is constructed around an uninterrupted primary route. Door openings create full passage rectangles, and entrance routes remain reserved through the complete approach rather than only at the transition point.
 
 ### stable identity
 
@@ -95,7 +109,7 @@ The renderer only visits blocks intersecting the camera bounds. Active outdoor i
 
 ## movement and collision
 
-Player movement is resolved one axis at a time. Outdoors, circles are checked against nearby rectangular buildings and the city boundary. Indoors, the player is checked against the interior boundary and generated wall rectangles. Every interior template connects its rooms through protected doorways or halls, while entry, exit, and stair clearances are kept free of walls, furniture, and infected spawn points. A blocked position from an older save is relocated to a safe transition point when the save loads.
+Player movement is resolved one axis at a time. Outdoors, circles are checked against nearby rectangular buildings and the city boundary. Indoors, the player is checked against the interior boundary and generated wall rectangles. Every interior template connects its rooms through protected doorways, galleries, cross-halls, or spines, while entry, exit, and stair clearances are kept free of walls, furniture, and infected spawn points. A blocked position from an older save is relocated to a safe transition point when the save loads.
 
 Infected use similar circle-versus-rectangle checks. When blocked, an infected changes its wander direction rather than running pathfinding. This keeps the simulation inexpensive, but it also means enemies do not calculate routes around complex obstacles.
 
