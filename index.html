@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0a0d0b">
   <meta name="description" content="City of Nothing — a perfectly top-down open-city zombie survival game.">
   <title>City of Nothing</title>
-  <link rel="stylesheet" href="styles.css?v=20260724.3">
+  <link rel="stylesheet" href="styles.css?v=20260724.4">
 </head>
 <body>
   <main id="game_shell">
@@ -29,6 +29,7 @@
       <div class="vital"><span>stamina</span><i><b id="stamina_meter"></b></i><em id="stamina_value">100</em></div>
       <div class="vital"><span>hunger</span><i><b id="hunger_meter"></b></i><em id="hunger_value">82</em></div>
       <div class="weapon_line"><span id="weapon_name">baseball bat</span><b id="ammo_value">melee</b></div>
+      <div class="group_line"><span>group</span><b id="group_status">travelling alone</b></div>
     </section>
 
     <section id="minimap_panel" class="hud_panel" aria-label="Local map">
@@ -95,6 +96,19 @@
       <button id="take_all" class="primary wide" type="button">take all</button>
     </section>
 
+    <section id="survivor_overlay" class="overlay compact" hidden>
+      <header>
+        <div><span class="eyebrow">survivor</span><h2 id="survivor_name">survivor</h2></div>
+        <button data-close type="button" aria-label="Close">×</button>
+      </header>
+      <div class="survivor_conversation">
+        <p id="survivor_dialogue"></p>
+        <span id="survivor_status"></span>
+        <div id="survivor_loadout"></div>
+      </div>
+      <button id="invite_survivor" class="primary wide" type="button">invite to join your group</button>
+    </section>
+
     <section id="start_screen">
       <div class="start_copy">
         <span class="eyebrow">a city that remembers</span>
@@ -116,7 +130,7 @@
         <div class="guide_grid">
           <div><kbd>w a s d</kbd><span>move</span></div><div><kbd>shift</kbd><span>sprint</span></div>
           <div><kbd>mouse</kbd><span>aim</span></div><div><kbd>left click</kbd><span>attack</span></div>
-          <div><kbd>e</kbd><span>interact</span></div><div><kbd>i / c</kbd><span>inventory / craft</span></div>
+          <div><kbd>e</kbd><span>interact / talk</span></div><div><kbd>i / c</kbd><span>inventory / craft</span></div>
           <div><kbd>1</kbd><span>best weapon</span></div><div><kbd>2</kbd><span>eat food</span></div>
         </div>
         <p>walk to marked doors to enter buildings. stairs connect basements and upper floors. permanent tags such as <strong>inedible</strong> and <strong>poisoned</strong> always survive crafting.</p>
@@ -137,6 +151,6 @@
       <button id="touch_attack" type="button">attack</button>
     </div>
   </main>
-  <script src="game.js?v=20260724.3"></script>
+  <script src="game.js?v=20260724.4"></script>
 </body>
 </html>
