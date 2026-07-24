@@ -8,10 +8,23 @@ const styles = fs.readFileSync(new URL("./styles.css", import.meta.url), "utf8")
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
 
 class FakeClassList {
-  add() {}
-  remove() {}
-  toggle() {}
-  contains() { return false; }
+  constructor() {
+    this.values = new Set();
+  }
+
+  add(...names) {
+    for (const name of names) this.values.add(name);
+  }
+  remove(...names) {
+    for (const name of names) this.values.delete(name);
+  }
+  toggle(name, force) {
+    const enabled = force ?? !this.values.has(name);
+    if (enabled) this.values.add(name);
+    else this.values.delete(name);
+    return enabled;
+  }
+  contains(name) { return this.values.has(name); }
 }
 
 class FakeElement {
@@ -22,12 +35,26 @@ class FakeElement {
     this.style = {};
     this.dataset = {};
     this.classList = new FakeClassList();
-    this.innerHTML = "";
+    this.children = [];
+    this._innerHTML = "";
     this.textContent = "";
+    this.disabled = false;
     this.width = id === "minimap_canvas" ? 220 : 1280;
     this.height = id === "minimap_canvas" ? 220 : 720;
   }
 
+  set innerHTML(value) {
+    this._innerHTML = value;
+    this.children = [...value.matchAll(/<button\b([^>]*)>/g)].map((match) => {
+      const child = new FakeElement();
+      for (const attribute of match[1].matchAll(/\bdata-([a-z0-9-]+)="([^"]*)"/g)) {
+        const name = attribute[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+        child.dataset[name] = attribute[2];
+      }
+      return child;
+    });
+  }
+  get innerHTML() { return this._innerHTML; }
   addEventListener(type, callback) {
     if (!this.listeners.has(type)) this.listeners.set(type, []);
     this.listeners.get(type).push(callback);
@@ -39,7 +66,12 @@ class FakeElement {
   remove() {}
   setPointerCapture() {}
   hasPointerCapture() { return false; }
-  querySelectorAll() { return []; }
+  querySelectorAll(selector) {
+    const match = selector.match(/^\[data-([a-z0-9-]+)\]$/);
+    if (!match) return [];
+    const name = match[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+    return this.children.filter((child) => Object.hasOwn(child.dataset, name));
+  }
   querySelector() { return new FakeElement(); }
   getBoundingClientRect() { return { left: 0, top: 0, width: 1280, height: 720 }; }
   getContext() { return canvas_context; }
@@ -234,6 +266,7 @@ const style_version = html.match(/<link rel="stylesheet" href="styles\.css\?v=([
 assert.ok(script_version, "game script uses a versioned URL and supports direct local launch");
 assert.equal(style_version, script_version, "game and stylesheet share the asset version");
 assert.doesNotMatch(html, /<script type="module"/, "local launch does not depend on module loading");
+assert.doesNotMatch(`${html}\n${source}`, /\bdata_[a-z0-9_-]+/, "interactive data attributes use browser dataset syntax");
 assert.match(styles, /@media \(max-width: 620px\), \(pointer: coarse\)/, "touch layout is included");
 assert.match(source, /floor_label\(this\.inside\.floor\)\.toUpperCase\(\)\}`, 10, 14\)/, "building and floor label stays inside the upper-left outer wall");
 const dom_references = [...source.matchAll(/\bdom\.([a-z_]+)/g)].map((match) => match[1]);
@@ -329,6 +362,18 @@ game.started = false;
 assert.doesNotThrow(() => elements.get("new_game_button").click(), "new game starts when local storage is restricted");
 assert.equal(game.started, true, "storage restrictions do not block a new run");
 storage_locked = false;
+
+game.inventory.craft_ids = [];
+game.inventory.render_crafting();
+let craft_buttons = elements.get("craft_inventory").querySelectorAll("[data-item]");
+assert.ok(craft_buttons.length >= 2, "crafting renders selectable inventory cards");
+craft_buttons[0].click();
+craft_buttons = elements.get("craft_inventory").querySelectorAll("[data-item]");
+craft_buttons[1].click();
+assert.deepEqual([...game.inventory.craft_ids], [game.inventory.items[0].id, game.inventory.items[1].id], "two different crafting items can be selected");
+assert.equal(elements.get("craft_button").disabled, false, "crafting enables after two items are selected");
+game.inventory.craft_ids = [];
+game.inventory.render_crafting();
 
 const soup_apple = api.combine_items(api.make_item("canned soup"), api.make_item("apple"), true);
 assert.equal(soup_apple.name, "canned soup apple");
