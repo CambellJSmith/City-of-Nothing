@@ -118,7 +118,11 @@ Human survivor state is owned by `Game`, not `World`. Keep these responsibilitie
 - `survivors_outside()` must remain deterministic for unseen blocks.
 - Recruited and lost IDs must be excluded from regenerated outdoor populations.
 - `update_survivors()` owns needs, target selection, roaming, following, and combat.
+- `survivor_target()` must preserve the different engagement limits for follow, attack, loot, and hold orders.
+- `issue_group_order()` must only affect living companions inside the hearing radius.
+- Companion container looting must use `container_inventory()` so player and NPC searches share deterministic contents and save state.
 - `place_companions()` must run after every world or floor transition.
+- Scene-local loot and hold tasks must reset during transitions; follow and attack may continue.
 - Survivor-generated dialogue and loadout markup must escape runtime text.
 - New persistent survivor fields need tolerant defaults in `restore_survivor()` and explicit output in `serialise_survivor()`.
 
@@ -138,6 +142,7 @@ Inspect core content data:
 city_of_nothing_test.districts
 city_of_nothing_test.item_catalog
 city_of_nothing_test.loot_tables
+city_of_nothing_test.group_orders
 city_of_nothing_test.survivor_ai
 ```
 
@@ -184,7 +189,7 @@ Run the dependency-free automated suite before merging:
 node tests.mjs
 ```
 
-The suite checks startup, persistence, crafting, survivor generation, needs, weapon selection, ammunition use, recruitment, companion transitions, infected target choice, generated content, all building types, every base interior template at minimum dimensions, sampled geometry and family variety, deterministic regeneration, four-way road-facing exteriors, rotated roof fixtures, matching interior entrances and exits, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
+The suite checks startup, persistence, crafting, survivor generation, needs, weapon selection, ammunition use, recruitment, shout range, all group orders, order-specific target selection, companion looting, companion transitions, infected target choice, generated content, all building types, every base interior template at minimum dimensions, sampled geometry and family variety, deterministic regeneration, four-way road-facing exteriors, rotated roof fixtures, matching interior entrances and exits, interior connectivity, full doorway passages, clear transitions, safe infected placement, and blocked legacy-save recovery. Also manually check the affected systems and at least this smoke path:
 
 1. Load the start screen with no console errors.
 2. Begin a new run and move with both WASD and arrow keys.
@@ -195,11 +200,14 @@ The suite checks startup, persistence, crafting, survivor generation, needs, wea
 7. Filter inventory, inspect an item, equip or consume it, and drop an item.
 8. Combine two items and confirm both inputs are consumed.
 9. Meet a survivor, talk, recruit them, and verify they follow and fight with their own supplies.
-10. Enter, change floors, leave, reload, and confirm the same companion remains safely with the player.
-11. Reload and continue; verify position, inventory, equipment, loot, kills, and companion state.
-12. Resize below both responsive breakpoints.
-13. Test a coarse-pointer device or browser emulation for the movement stick and touch buttons.
-14. Confirm the console contains no uncaught exceptions.
+10. Press `Q`, issue every group order, and verify only nearby teammates respond.
+11. Confirm attack hunts distant infected, stay keeps formation, hold defends its anchor, and a shout attracts nearby infected.
+12. Order multiple companions to loot and verify they divide containers, carry the contents, and return when the area is clear.
+13. Enter, change floors, leave, reload, and confirm the same companion remains safely with the player and persistent orders restore.
+14. Reload and continue; verify position, inventory, equipment, loot, kills, and companion state.
+15. Resize below both responsive breakpoints.
+16. Test a coarse-pointer device or browser emulation for the movement stick, use, attack, and orders buttons.
+17. Confirm the console contains no uncaught exceptions.
 
 For deterministic systems, repeat the same action after a clean save and confirm the same block, building, interior, infected, and loot results appear.
 
