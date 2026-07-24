@@ -295,7 +295,7 @@ button:focus-visible {
   bottom: 20px;
   left: 50%;
   display: grid;
-  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  grid-template-columns: repeat(5, minmax(105px, 1fr));
   overflow: hidden;
   transform: translateX(-50%);
 }
@@ -700,6 +700,60 @@ button:focus-visible {
   padding: 22px;
 }
 
+.group_orders {
+  display: grid;
+  gap: 8px;
+  padding: 18px;
+}
+
+.group_orders p,
+.group_orders small {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.6;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.group_orders small {
+  margin: 8px 0 0;
+  color: var(--faint);
+}
+
+.group_orders > button {
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  background: #101311;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.group_orders > button:hover,
+.group_orders > button:focus-visible {
+  border-color: var(--hot_line);
+  background: rgba(207, 222, 147, 0.08);
+}
+
+.group_orders > button strong {
+  color: var(--acid);
+  font-family: Impact, "Arial Narrow", sans-serif;
+  font-size: 16px;
+  font-weight: normal;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.group_orders > button span {
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
 #survivor_dialogue {
   margin: 0;
   color: var(--ink);
@@ -1073,6 +1127,17 @@ button:focus-visible {
   #quick_bar {
     bottom: 10px;
     width: calc(100vw - 20px);
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  #quick_bar button {
+    justify-content: center;
+    min-width: 0;
+    padding: 0 5px;
+  }
+
+  #quick_bar button span {
+    display: none;
   }
 
   #interaction_prompt {
@@ -1117,7 +1182,8 @@ button:focus-visible {
   }
 
   #touch_use,
-  #touch_attack {
+  #touch_attack,
+  #touch_orders {
     position: absolute;
     right: 20px;
     bottom: 255px;
@@ -1137,5 +1203,12 @@ button:focus-visible {
     bottom: 205px;
     width: 76px;
     height: 76px;
+  }
+
+  #touch_orders {
+    right: 20px;
+    bottom: 330px;
+    width: 58px;
+    height: 58px;
   }
 }
